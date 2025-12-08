@@ -58,19 +58,19 @@ export const FAQModal: React.FC<FAQModalProps> = ({ isOpen, onClose, t }) => {
     ];
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center px-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-             <div className="w-full max-w-2xl bg-[#0D0B14] border border-white/10 rounded-xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 ring-1 ring-white/10 flex flex-col max-h-[85vh]">
-                <div className="flex items-center justify-between px-6 py-4 border-b border-white/5 bg-white/5 flex-shrink-0">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center px-3 md:px-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+             <div className="w-full max-w-2xl bg-[#0D0B14] border border-white/10 rounded-xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 ring-1 ring-white/10 flex flex-col h-[85vh] md:h-auto md:max-h-[85vh]">
+                <div className="flex items-center justify-between px-5 py-4 md:px-6 border-b border-white/5 bg-white/5 flex-shrink-0">
                     <div className="flex items-center gap-2">
                         <HelpCircle className="w-5 h-5 text-purple-400" />
                         <h2 className="text-lg font-bold text-white">FAQ</h2>
                     </div>
-                    <button onClick={onClose} className="p-1 rounded-lg text-white/40 hover:text-white hover:bg-white/10 transition-colors">
+                    <button onClick={onClose} className="p-2 rounded-lg text-white/40 hover:text-white hover:bg-white/10 transition-colors">
                         <X className="w-5 h-5" />
                     </button>
                 </div>
                 
-                <div className="p-6 overflow-y-auto custom-scrollbar">
+                <div className="flex-1 p-4 md:p-6 overflow-y-auto custom-scrollbar">
                     <div className="space-y-3">
                         {faqItems.map((item, index) => (
                             <div 
@@ -79,17 +79,17 @@ export const FAQModal: React.FC<FAQModalProps> = ({ isOpen, onClose, t }) => {
                             >
                                 <button
                                     onClick={() => toggleAccordion(index)}
-                                    className="w-full flex items-center justify-between p-4 text-left"
+                                    className="w-full flex items-center justify-between p-3 md:p-4 text-left select-none"
                                 >
-                                    <div className="flex items-center gap-3">
-                                        <div className={`p-2 rounded-lg bg-black/20 border border-white/5 transition-opacity duration-300 ${openIndex === index ? 'opacity-100' : 'opacity-70'}`}>
+                                    <div className="flex items-center gap-3 flex-1 min-w-0 pr-2">
+                                        <div className={`flex-shrink-0 p-2 rounded-lg bg-black/20 border border-white/5 transition-opacity duration-300 ${openIndex === index ? 'opacity-100' : 'opacity-70'}`}>
                                             {item.icon}
                                         </div>
-                                        <span className={`font-medium transition-colors duration-300 ${openIndex === index ? 'text-white' : 'text-white/80'}`}>
+                                        <span className={`font-medium transition-colors duration-300 break-words leading-tight ${openIndex === index ? 'text-white' : 'text-white/80'}`}>
                                             {item.question}
                                         </span>
                                     </div>
-                                    <div className={`transition-transform duration-300 ${openIndex === index ? 'rotate-180' : 'rotate-0'}`}>
+                                    <div className={`flex-shrink-0 transition-transform duration-300 ${openIndex === index ? 'rotate-180' : 'rotate-0'}`}>
                                         <ChevronDown className={`w-5 h-5 ${openIndex === index ? 'text-purple-400' : 'text-white/30'}`} />
                                     </div>
                                 </button>
@@ -100,7 +100,7 @@ export const FAQModal: React.FC<FAQModalProps> = ({ isOpen, onClose, t }) => {
                                     }`}
                                 >
                                     <div className="overflow-hidden">
-                                        <div className="px-4 pb-4 pl-[4.5rem]">
+                                        <div className="px-4 pb-4 md:pl-[4.5rem]">
                                             <div className={`text-sm text-white/60 leading-relaxed border-t border-white/5 pt-3 transition-opacity duration-500 delay-100 ${openIndex === index ? 'opacity-100' : 'opacity-0'}`}>
                                                 {item.answer}
                                             </div>
@@ -124,7 +124,7 @@ export const FAQModal: React.FC<FAQModalProps> = ({ isOpen, onClose, t }) => {
                     </div>
                 </div>
 
-                <div className="flex items-center justify-end px-6 py-4 border-t border-white/5 bg-white/[0.02] flex-shrink-0">
+                <div className="flex items-center justify-end px-5 py-4 md:px-6 border-t border-white/5 bg-white/[0.02] flex-shrink-0">
                     <button
                         onClick={onClose}
                         className="px-6 py-2 text-sm font-medium text-white bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
