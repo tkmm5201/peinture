@@ -1,5 +1,0 @@
-{
-  "name": "Peinture",
-  "description": "A sleek, dark-themed AI image generator using Gemini 2.5 Flash Image model. Features prompt customization, aspect ratio selection, and a history gallery.",
-  "requestFramePermissions": []
-}

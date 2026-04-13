@@ -1,461 +1,483 @@
-
-import { useState, useEffect, useCallback } from 'react';
-import { useAppStore } from '../store/appStore';
-import { 
-    S3Config, WebDAVConfig, StorageType, CustomProvider, RemoteModelList, ServiceMode, VideoSettings, UnifiedModelOption, ProviderId 
-} from '../types';
+import { useState, useEffect } from "react";
+import { useSettingsStore } from "../store/settingsStore";
+import { useConfigStore } from "../store/configStore";
 import {
-    getSystemPromptContent, saveSystemPromptContent, DEFAULT_SYSTEM_PROMPT_CONTENT,
-    getTranslationPromptContent, saveTranslationPromptContent, DEFAULT_TRANSLATION_SYSTEM_PROMPT,
-    getVideoSettings, saveVideoSettings, DEFAULT_VIDEO_SETTINGS,
-    getEditModelConfig, saveEditModelConfig,
-    getLiveModelConfig, saveLiveModelConfig,
-    getTextModelConfig, saveTextModelConfig,
-    getUpscalerModelConfig, saveUpscalerModelConfig,
-    getCustomProviders, addCustomProvider, removeCustomProvider, saveCustomProviders,
-    generateUUID, getServiceMode, saveServiceMode
-} from '../services/utils';
-import { transformModelList } from '../services/customService';
+  CustomProvider,
+  RemoteModelList,
+  ServiceMode,
+  VideoSettings,
+  UnifiedModelOption,
+} from "../types";
 import {
-    getS3Config, saveS3Config, DEFAULT_S3_CONFIG,
-    getWebDAVConfig, saveWebDAVConfig, DEFAULT_WEBDAV_CONFIG,
-    getStorageType, saveStorageType,
-    testWebDAVConnection, testS3Connection, clearOPFS
-} from '../services/storageService';
-import { HF_MODEL_OPTIONS, GITEE_MODEL_OPTIONS, MS_MODEL_OPTIONS, A4F_MODEL_OPTIONS, EDIT_MODELS, LIVE_MODELS, TEXT_MODELS, UPSCALER_MODELS } from '../constants';
+  getSystemPromptContent,
+  saveSystemPromptContent,
+  getTranslationPromptContent,
+  saveTranslationPromptContent,
+  getVideoSettings,
+  saveVideoSettings,
+  DEFAULT_VIDEO_SETTINGS,
+  getEditModelConfig,
+  saveEditModelConfig,
+  getLiveModelConfig,
+  saveLiveModelConfig,
+  getTextModelConfig,
+  saveTextModelConfig,
+  getUpscalerModelConfig,
+  saveUpscalerModelConfig,
+  getCustomProviders,
+  addCustomProvider,
+  removeCustomProvider,
+  saveCustomProviders,
+  generateUUID,
+  getServiceMode,
+  saveServiceMode,
+} from "../services/utils";
+import { transformModelList } from "../services/customService";
+import {
+  HF_MODEL_OPTIONS,
+  GITEE_MODEL_OPTIONS,
+  MS_MODEL_OPTIONS,
+  A4F_MODEL_OPTIONS,
+  EDIT_MODELS,
+  LIVE_MODELS,
+  TEXT_MODELS,
+  UPSCALER_MODELS,
+} from "../constants";
+import { useTokensForm } from "./useTokensForm";
+import { useStorageForm } from "./useStorageForm";
 
 export const useSettingsForm = (isOpen: boolean, onClose: () => void) => {
-    const { 
-        provider, setProvider, model, setModel, 
-        tokens, tokenStatus, setProviderTokens 
-    } = useAppStore();
+  const { provider, setProvider, model, setModel } = useSettingsStore();
+  const { setProviderTokens } = useConfigStore();
 
-    // -- State --
-    const [activeTab, setActiveTab] = useState<'general' | 'provider' | 'models' | 'prompt' | 'live' | 's3' | 'webdav'>('general');
-    const [serviceMode, setServiceMode] = useState<ServiceMode>('local');
+  // Composed sub-hooks
+  const tokensForm = useTokensForm();
+  const storageForm = useStorageForm();
 
-    // Tokens
-    const [token, setToken] = useState('');
-    const [stats, setStats] = useState({ total: 0, active: 0, exhausted: 0 });
-    const [giteeToken, setGiteeToken] = useState('');
-    const [giteeStats, setGiteeStats] = useState({ total: 0, active: 0, exhausted: 0 });
-    const [msToken, setMsToken] = useState('');
-    const [msStats, setMsStats] = useState({ total: 0, active: 0, exhausted: 0 });
-    const [a4fToken, setA4FToken] = useState('');
-    const [a4fStats, setA4FStats] = useState({ total: 0, active: 0, exhausted: 0 });
+  // -- State --
+  const [activeTab, setActiveTab] = useState<
+    "general" | "provider" | "models" | "prompt" | "live" | "s3" | "webdav"
+  >("general");
+  const [serviceMode, setServiceMode] = useState<ServiceMode>("local");
 
-    // Custom Providers
-    const [customProviders, setCustomProviders] = useState<CustomProvider[]>([]);
-    const [newProviderName, setNewProviderName] = useState('');
-    const [newProviderUrl, setNewProviderUrl] = useState('');
-    const [newProviderToken, setNewProviderToken] = useState('');
-    const [fetchStatus, setFetchStatus] = useState<'idle' | 'loading' | 'success' | 'failed'>('idle');
-    const [fetchedModels, setFetchedModels] = useState<RemoteModelList | null>(null);
-    const [refreshingProviders, setRefreshingProviders] = useState<Record<string, boolean>>({});
-    const [refreshSuccessProviders, setRefreshSuccessProviders] = useState<Record<string, boolean>>({});
-    const [refreshErrorProviders, setRefreshErrorProviders] = useState<Record<string, boolean>>({});
+  // Custom Providers
+  const [customProviders, setCustomProviders] = useState<CustomProvider[]>([]);
+  const [newProviderName, setNewProviderName] = useState("");
+  const [newProviderUrl, setNewProviderUrl] = useState("");
+  const [newProviderToken, setNewProviderToken] = useState("");
+  const [fetchStatus, setFetchStatus] = useState<
+    "idle" | "loading" | "success" | "failed"
+  >("idle");
+  const [fetchedModels, setFetchedModels] = useState<RemoteModelList | null>(
+    null,
+  );
+  const [refreshingProviders, setRefreshingProviders] = useState<
+    Record<string, boolean>
+  >({});
+  const [refreshSuccessProviders, setRefreshSuccessProviders] = useState<
+    Record<string, boolean>
+  >({});
+  const [refreshErrorProviders, setRefreshErrorProviders] = useState<
+    Record<string, boolean>
+  >({});
 
-    // Prompts
-    const [systemPrompt, setSystemPrompt] = useState('');
-    const [translationPrompt, setTranslationPrompt] = useState('');
+  // Prompts
+  const [systemPrompt, setSystemPrompt] = useState("");
+  const [translationPrompt, setTranslationPrompt] = useState("");
 
-    // Unified Models
-    const [creationModelValue, setCreationModelValue] = useState<string>('');
-    const [editModelValue, setEditModelValue] = useState<string>('');
-    const [liveModelValue, setLiveModelValue] = useState<string>('');
-    const [textModelValue, setTextModelValue] = useState<string>('');
-    const [upscalerModelValue, setUpscalerModelValue] = useState<string>('');
+  // Unified Models
+  const [creationModelValue, setCreationModelValue] = useState<string>("");
+  const [editModelValue, setEditModelValue] = useState<string>("");
+  const [liveModelValue, setLiveModelValue] = useState<string>("");
+  const [textModelValue, setTextModelValue] = useState<string>("");
+  const [upscalerModelValue, setUpscalerModelValue] = useState<string>("");
 
-    // Video
-    const [videoSettings, setVideoSettings] = useState<VideoSettings>(DEFAULT_VIDEO_SETTINGS['huggingface']);
+  // Video
+  const [videoSettings, setVideoSettings] = useState<VideoSettings>(
+    DEFAULT_VIDEO_SETTINGS["huggingface"],
+  );
 
-    // Storage
-    const [storageType, setStorageType] = useState<StorageType>('opfs');
-    const [s3Config, setS3Config] = useState<S3Config>(DEFAULT_S3_CONFIG);
-    const [webdavConfig, setWebdavConfig] = useState<WebDAVConfig>(DEFAULT_WEBDAV_CONFIG);
-    
-    // Testing
-    const [testWebDAVResult, setTestWebDAVResult] = useState<{ success: boolean; message: string } | null>(null);
-    const [isTestingWebDAV, setIsTestingWebDAV] = useState(false);
-    const [testS3Result, setTestS3Result] = useState<{ success: boolean; message: string } | null>(null);
-    const [isTestingS3, setIsTestingS3] = useState(false);
+  // Helper to refresh a single provider's models
+  const performModelRefresh = async (p: CustomProvider) => {
+    setRefreshingProviders((prev) => ({ ...prev, [p.id]: true }));
+    setRefreshSuccessProviders((prev) => ({ ...prev, [p.id]: false }));
+    setRefreshErrorProviders((prev) => ({ ...prev, [p.id]: false }));
 
-    const calculateStats = (tokensList: string[], providerId: ProviderId) => {
-        const total = tokensList.length;
-        const exhaustedMap = tokenStatus[providerId]?.exhausted || {};
-        const exhaustedCount = tokensList.filter(t => exhaustedMap[t]).length;
-        return {
-            total,
-            exhausted: exhaustedCount,
-            active: total - exhaustedCount
-        };
+    try {
+      const url = p.apiUrl.replace(/\/$/, "") + "/v1/models";
+      const headers: Record<string, string> = {};
+      if (p.token) headers["Authorization"] = `Bearer ${p.token}`;
+      const response = await fetch(url, { headers });
+      if (!response.ok) throw new Error("Fetch failed");
+      const rawData = await response.json();
+      const transformedData = transformModelList(rawData);
+
+      setCustomProviders((prev) =>
+        prev.map((cp) =>
+          cp.id === p.id ? { ...cp, models: transformedData } : cp,
+        ),
+      );
+      setRefreshSuccessProviders((prev) => ({ ...prev, [p.id]: true }));
+      setTimeout(
+        () =>
+          setRefreshSuccessProviders((prev) => ({ ...prev, [p.id]: false })),
+        2500,
+      );
+    } catch (e) {
+      console.error(`Failed to refresh models for ${p.name}`, e);
+      setRefreshErrorProviders((prev) => ({ ...prev, [p.id]: true }));
+    } finally {
+      setRefreshingProviders((prev) => ({ ...prev, [p.id]: false }));
+    }
+  };
+
+  // -- Initialization --
+  // Only re-run when the dialog opens or when the provider/model changes.
+  // tokensForm/storageForm are NOT included as deps because they are new
+  // object references on every render, which would cause an infinite loop.
+  useEffect(() => {
+    if (isOpen) {
+      setServiceMode(getServiceMode());
+
+      // Initialize composed sub-hooks
+      tokensForm.initializeTokens();
+      storageForm.initializeStorage();
+
+      const initProviders = getCustomProviders();
+      setCustomProviders(initProviders);
+
+      // Auto-refresh custom providers
+      initProviders.forEach((p) => {
+        if (p.enabled) {
+          performModelRefresh(p);
+        }
+      });
+
+      setSystemPrompt(getSystemPromptContent());
+      setTranslationPrompt(getTranslationPromptContent());
+
+      setVideoSettings(getVideoSettings(provider));
+
+      const editConfig = getEditModelConfig();
+      setEditModelValue(`${editConfig.provider}:${editConfig.model}`);
+
+      const liveConfig = getLiveModelConfig();
+      setLiveModelValue(`${liveConfig.provider}:${liveConfig.model}`);
+
+      const textConfig = getTextModelConfig();
+      setTextModelValue(`${textConfig.provider}:${textConfig.model}`);
+
+      const upscalerConfig = getUpscalerModelConfig();
+      setUpscalerModelValue(
+        `${upscalerConfig.provider}:${upscalerConfig.model}`,
+      );
+
+      if (provider && model) {
+        setCreationModelValue(`${provider}:${model}`);
+      }
+    } else {
+      setActiveTab("general");
+      setNewProviderName("");
+      setNewProviderUrl("");
+      setNewProviderToken("");
+      setFetchedModels(null);
+      setFetchStatus("idle");
+      setRefreshErrorProviders({});
+      setRefreshSuccessProviders({});
+      setRefreshingProviders({});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, provider, model]);
+
+  // -- Validation Effect --
+  useEffect(() => {
+    const getValidValues = (
+      type: "generate" | "edit" | "video" | "text" | "upscaler",
+      baseList: UnifiedModelOption[],
+    ) => {
+      const valid = new Set<string>();
+      const isLocal = serviceMode === "local" || serviceMode === "hydration";
+      const isServer = serviceMode === "server" || serviceMode === "hydration";
+
+      if (isLocal) {
+        baseList
+          .filter((m) => m.provider === "huggingface")
+          .forEach((m) => valid.add(m.value));
+        if (tokensForm.giteeToken)
+          baseList
+            .filter((m) => m.provider === "gitee")
+            .forEach((m) => valid.add(m.value));
+        if (tokensForm.msToken)
+          baseList
+            .filter((m) => m.provider === "modelscope")
+            .forEach((m) => valid.add(m.value));
+        if (tokensForm.a4fToken)
+          baseList
+            .filter((m) => m.provider === "a4f")
+            .forEach((m) => valid.add(m.value));
+      }
+
+      if (isServer) {
+        customProviders.forEach((cp) => {
+          const models = cp.models[type];
+          if (models) {
+            models.forEach((m) => valid.add(`${cp.id}:${m.id}`));
+          }
+        });
+      }
+      return Array.from(valid);
     };
 
-    // Helper to refresh a single provider's models
-    const performModelRefresh = async (p: CustomProvider) => {
-        setRefreshingProviders(prev => ({ ...prev, [p.id]: true }));
-        setRefreshSuccessProviders(prev => ({ ...prev, [p.id]: false }));
-        setRefreshErrorProviders(prev => ({ ...prev, [p.id]: false }));
-        
-        try {
-            const url = p.apiUrl.replace(/\/$/, '') + '/v1/models';
-            const headers: Record<string, string> = {};
-            if (p.token) headers['Authorization'] = `Bearer ${p.token}`;
-            const response = await fetch(url, { headers });
-            if (!response.ok) throw new Error('Fetch failed');
-            const rawData = await response.json();
-            const transformedData = transformModelList(rawData);
-            
-            setCustomProviders(prev => prev.map(cp => cp.id === p.id ? { ...cp, models: transformedData } : cp));
-            setRefreshSuccessProviders(prev => ({ ...prev, [p.id]: true }));
-            setTimeout(() => setRefreshSuccessProviders(prev => ({ ...prev, [p.id]: false })), 2500);
-        } catch (e) {
-            console.error(`Failed to refresh models for ${p.name}`, e);
-            setRefreshErrorProviders(prev => ({ ...prev, [p.id]: true }));
-        } finally {
-            setRefreshingProviders(prev => ({ ...prev, [p.id]: false }));
-        }
+    const baseCreationList: UnifiedModelOption[] = [
+      ...HF_MODEL_OPTIONS.map((m) => ({
+        label: m.label,
+        value: `huggingface:${m.value}`,
+        provider: "huggingface" as any,
+      })),
+      ...GITEE_MODEL_OPTIONS.map((m) => ({
+        label: m.label,
+        value: `gitee:${m.value}`,
+        provider: "gitee" as any,
+      })),
+      ...MS_MODEL_OPTIONS.map((m) => ({
+        label: m.label,
+        value: `modelscope:${m.value}`,
+        provider: "modelscope" as any,
+      })),
+      ...A4F_MODEL_OPTIONS.map((m) => ({
+        label: m.label,
+        value: `a4f:${m.value}`,
+        provider: "a4f" as any,
+      })),
+    ];
+
+    const validCreation = getValidValues("generate", baseCreationList);
+    if (
+      validCreation.length > 0 &&
+      (!creationModelValue || !validCreation.includes(creationModelValue))
+    ) {
+      setCreationModelValue(validCreation[0]);
+    }
+
+    const validEdit = getValidValues("edit", EDIT_MODELS);
+    if (
+      validEdit.length > 0 &&
+      (!editModelValue || !validEdit.includes(editModelValue))
+    ) {
+      setEditModelValue(validEdit[0]);
+    }
+
+    const validLive = getValidValues("video", LIVE_MODELS);
+    if (
+      validLive.length > 0 &&
+      (!liveModelValue || !validLive.includes(liveModelValue))
+    ) {
+      setLiveModelValue(validLive[0]);
+    }
+
+    const validText = getValidValues("text", TEXT_MODELS);
+    if (
+      validText.length > 0 &&
+      (!textModelValue || !validText.includes(textModelValue))
+    ) {
+      setTextModelValue(validText[0]);
+    }
+
+    const validUpscaler = getValidValues("upscaler", UPSCALER_MODELS);
+    if (
+      validUpscaler.length > 0 &&
+      (!upscalerModelValue || !validUpscaler.includes(upscalerModelValue))
+    ) {
+      setUpscalerModelValue(validUpscaler[0]);
+    }
+  }, [
+    creationModelValue,
+    customProviders,
+    editModelValue,
+    liveModelValue,
+    serviceMode,
+    textModelValue,
+    tokensForm.a4fToken,
+    tokensForm.giteeToken,
+    tokensForm.msToken,
+    upscalerModelValue,
+  ]);
+
+  // -- Handlers --
+
+  const handleServiceModeChange = (newMode: ServiceMode) => {
+    setServiceMode(newMode);
+    if (newMode === "local") {
+      const customList = getCustomProviders();
+      const currentProviderIsCustom = customList.some(
+        (cp) => cp.id === provider,
+      );
+      if (currentProviderIsCustom) {
+        setProvider("huggingface");
+        setModel(HF_MODEL_OPTIONS[0].value as any);
+        setCreationModelValue(`huggingface:${HF_MODEL_OPTIONS[0].value}`);
+      }
+    }
+  };
+
+  const handleFetchCustomModels = async () => {
+    if (!newProviderUrl) return;
+    setFetchStatus("loading");
+    try {
+      const url = newProviderUrl.replace(/\/$/, "") + "/v1/models";
+      const headers: Record<string, string> = {};
+      if (newProviderToken)
+        headers["Authorization"] = `Bearer ${newProviderToken}`;
+      const response = await fetch(url, { headers });
+      if (!response.ok) throw new Error("Fetch failed");
+      const rawData = await response.json();
+      const transformedData = transformModelList(rawData);
+      setFetchedModels(transformedData);
+      setFetchStatus("success");
+    } catch (e) {
+      console.error("Failed to fetch models", e);
+      setFetchStatus("failed");
+      setFetchedModels(null);
+    }
+  };
+
+  const handleAddCustomProvider = () => {
+    if (!newProviderUrl || !fetchedModels) return;
+    let finalName = newProviderName.trim();
+    if (!finalName) {
+      try {
+        const urlStr = newProviderUrl.startsWith("http")
+          ? newProviderUrl
+          : `https://${newProviderUrl}`;
+        const url = new URL(urlStr);
+        const parts = url.hostname.split(".");
+        finalName = parts.length >= 2 ? parts[parts.length - 2] : url.hostname;
+        finalName = finalName.charAt(0).toUpperCase() + finalName.slice(1);
+      } catch {
+        finalName = "Custom";
+      }
+    }
+    const newProvider: CustomProvider = {
+      id: generateUUID(),
+      name: finalName,
+      apiUrl: newProviderUrl,
+      token: newProviderToken,
+      models: fetchedModels,
+      enabled: true,
     };
+    addCustomProvider(newProvider);
+    setCustomProviders(getCustomProviders());
 
-    // -- Initialization --
-    useEffect(() => {
-        if (isOpen) {
-            setServiceMode(getServiceMode());
+    setNewProviderName("");
+    setNewProviderUrl("");
+    setNewProviderToken("");
+    setFetchStatus("idle");
+    setFetchedModels(null);
+  };
 
-            // Initialize form state from store
-            const hfTokens = tokens.huggingface || [];
-            setToken(hfTokens.join(','));
-            setStats(calculateStats(hfTokens, 'huggingface'));
+  const handleUpdateCustomProvider = (
+    id: string,
+    updates: Partial<CustomProvider>,
+  ) => {
+    setCustomProviders((prev) =>
+      prev.map((cp) => (cp.id === id ? { ...cp, ...updates } : cp)),
+    );
+  };
 
-            const gTokens = tokens.gitee || [];
-            setGiteeToken(gTokens.join(','));
-            setGiteeStats(calculateStats(gTokens, 'gitee'));
+  const handleDeleteCustomProvider = (id: string) => {
+    removeCustomProvider(id);
+    setCustomProviders(getCustomProviders());
+  };
 
-            const mTokens = tokens.modelscope || [];
-            setMsToken(mTokens.join(','));
-            setMsStats(calculateStats(mTokens, 'modelscope'));
+  const handleRefreshCustomModels = async (id: string) => {
+    const p = customProviders.find((cp) => cp.id === id);
+    if (!p) return;
+    performModelRefresh(p);
+  };
 
-            const aTokens = tokens.a4f || [];
-            setA4FToken(aTokens.join(','));
-            setA4FStats(calculateStats(aTokens, 'a4f'));
+  const handleSave = () => {
+    // Dispatch actions to update store tokens
+    setProviderTokens("huggingface", tokensForm.token);
+    setProviderTokens("gitee", tokensForm.giteeToken);
+    setProviderTokens("modelscope", tokensForm.msToken);
+    setProviderTokens("a4f", tokensForm.a4fToken);
 
-            const initProviders = getCustomProviders();
-            setCustomProviders(initProviders);
+    saveSystemPromptContent(systemPrompt);
+    saveTranslationPromptContent(translationPrompt);
+    saveVideoSettings(provider, videoSettings);
 
-            // Auto-refresh custom providers
-            initProviders.forEach(p => {
-                if (p.enabled) {
-                    performModelRefresh(p);
-                }
-            });
+    storageForm.saveStorage();
 
-            setSystemPrompt(getSystemPromptContent());
-            setTranslationPrompt(getTranslationPromptContent());
+    saveEditModelConfig(editModelValue);
+    saveLiveModelConfig(liveModelValue);
+    saveTextModelConfig(textModelValue);
+    saveUpscalerModelConfig(upscalerModelValue);
 
-            setVideoSettings(getVideoSettings(provider));
+    saveServiceMode(serviceMode);
+    saveCustomProviders(customProviders);
 
-            setStorageType(getStorageType());
-            setS3Config(getS3Config());
-            setWebdavConfig(getWebDAVConfig());
-            
-            setTestWebDAVResult(null);
-            setTestS3Result(null);
+    if (creationModelValue) {
+      const [newProvider, newModel] = creationModelValue.split(":");
+      setProvider(newProvider as any);
+      setModel(newModel as any);
+    }
 
-            const editConfig = getEditModelConfig();
-            setEditModelValue(`${editConfig.provider}:${editConfig.model}`);
+    onClose();
+  };
 
-            const liveConfig = getLiveModelConfig();
-            setLiveModelValue(`${liveConfig.provider}:${liveConfig.model}`);
+  return {
+    activeTab,
+    setActiveTab,
+    serviceMode,
+    handleServiceModeChange,
 
-            const textConfig = getTextModelConfig();
-            setTextModelValue(`${textConfig.provider}:${textConfig.model}`);
+    // Tokens (from composed hook)
+    ...tokensForm,
 
-            const upscalerConfig = getUpscalerModelConfig();
-            setUpscalerModelValue(`${upscalerConfig.provider}:${upscalerConfig.model}`);
+    customProviders,
+    handleUpdateCustomProvider,
+    handleDeleteCustomProvider,
+    handleRefreshCustomModels,
+    refreshingProviders,
+    refreshSuccessProviders,
+    refreshErrorProviders,
+    newProviderName,
+    setNewProviderName,
+    newProviderUrl,
+    setNewProviderUrl,
+    newProviderToken,
+    setNewProviderToken,
+    fetchStatus,
+    fetchedModels,
+    handleFetchCustomModels,
+    handleAddCustomProvider,
+    handleClearAddForm: () => {
+      setNewProviderName("");
+      setNewProviderUrl("");
+      setNewProviderToken("");
+      setFetchedModels(null);
+      setFetchStatus("idle");
+    },
+    systemPrompt,
+    setSystemPrompt,
+    translationPrompt,
+    setTranslationPrompt,
+    creationModelValue,
+    setCreationModelValue,
+    editModelValue,
+    setEditModelValue,
+    liveModelValue,
+    setLiveModelValue,
+    textModelValue,
+    setTextModelValue,
+    upscalerModelValue,
+    setUpscalerModelValue,
+    videoSettings,
+    setVideoSettings,
 
-            if (provider && model) {
-                setCreationModelValue(`${provider}:${model}`);
-            }
-        } else {
-            setActiveTab('general');
-            setNewProviderName('');
-            setNewProviderUrl('');
-            setNewProviderToken('');
-            setFetchedModels(null);
-            setFetchStatus('idle');
-            setRefreshErrorProviders({});
-            setRefreshSuccessProviders({});
-            setRefreshingProviders({});
-        }
-    }, [isOpen]);
+    // Storage (from composed hook)
+    ...storageForm,
 
-    // -- Validation Effect --
-    useEffect(() => {
-        const getValidValues = (type: 'generate' | 'edit' | 'video' | 'text' | 'upscaler', baseList: UnifiedModelOption[]) => {
-            const valid = new Set<string>();
-            const isLocal = serviceMode === 'local' || serviceMode === 'hydration';
-            const isServer = serviceMode === 'server' || serviceMode === 'hydration';
-
-            if (isLocal) {
-                baseList.filter(m => m.provider === 'huggingface').forEach(m => valid.add(m.value));
-                if (giteeToken) baseList.filter(m => m.provider === 'gitee').forEach(m => valid.add(m.value));
-                if (msToken) baseList.filter(m => m.provider === 'modelscope').forEach(m => valid.add(m.value));
-                if (a4fToken) baseList.filter(m => m.provider === 'a4f').forEach(m => valid.add(m.value));
-            }
-
-            if (isServer) {
-                customProviders.forEach(cp => {
-                    const models = cp.models[type];
-                    if (models) {
-                        models.forEach(m => valid.add(`${cp.id}:${m.id}`));
-                    }
-                });
-            }
-            return Array.from(valid);
-        };
-
-        const baseCreationList: UnifiedModelOption[] = [
-            ...HF_MODEL_OPTIONS.map(m => ({ label: m.label, value: `huggingface:${m.value}`, provider: 'huggingface' as any })),
-            ...GITEE_MODEL_OPTIONS.map(m => ({ label: m.label, value: `gitee:${m.value}`, provider: 'gitee' as any })),
-            ...MS_MODEL_OPTIONS.map(m => ({ label: m.label, value: `modelscope:${m.value}`, provider: 'modelscope' as any })),
-            ...A4F_MODEL_OPTIONS.map(m => ({ label: m.label, value: `a4f:${m.value}`, provider: 'a4f' as any }))
-        ];
-        
-        const validCreation = getValidValues('generate', baseCreationList);
-        if (validCreation.length > 0 && (!creationModelValue || !validCreation.includes(creationModelValue))) {
-            setCreationModelValue(validCreation[0]);
-        }
-
-        const validEdit = getValidValues('edit', EDIT_MODELS);
-        if (validEdit.length > 0 && (!editModelValue || !validEdit.includes(editModelValue))) {
-            setEditModelValue(validEdit[0]);
-        }
-
-        const validLive = getValidValues('video', LIVE_MODELS);
-        if (validLive.length > 0 && (!liveModelValue || !validLive.includes(liveModelValue))) {
-            setLiveModelValue(validLive[0]);
-        }
-
-        const validText = getValidValues('text', TEXT_MODELS);
-        if (validText.length > 0 && (!textModelValue || !validText.includes(textModelValue))) {
-            setTextModelValue(validText[0]);
-        }
-
-        const validUpscaler = getValidValues('upscaler', UPSCALER_MODELS);
-        if (validUpscaler.length > 0 && (!upscalerModelValue || !validUpscaler.includes(upscalerModelValue))) {
-            setUpscalerModelValue(validUpscaler[0]);
-        }
-
-    }, [customProviders, serviceMode, giteeToken, msToken, a4fToken]);
-
-    // -- Handlers --
-
-    const handleServiceModeChange = (newMode: ServiceMode) => {
-        setServiceMode(newMode);
-        if (newMode === 'local') {
-            const customList = getCustomProviders();
-            const currentProviderIsCustom = customList.some(cp => cp.id === provider);
-            if (currentProviderIsCustom) {
-                setProvider('huggingface');
-                setModel(HF_MODEL_OPTIONS[0].value as any);
-                setCreationModelValue(`huggingface:${HF_MODEL_OPTIONS[0].value}`);
-            }
-        }
-    };
-
-    const handleFetchCustomModels = async () => {
-        if (!newProviderUrl) return;
-        setFetchStatus('loading');
-        try {
-            const url = newProviderUrl.replace(/\/$/, '') + '/v1/models';
-            const headers: Record<string, string> = {};
-            if (newProviderToken) headers['Authorization'] = `Bearer ${newProviderToken}`;
-            const response = await fetch(url, { headers });
-            if (!response.ok) throw new Error('Fetch failed');
-            const rawData = await response.json();
-            const transformedData = transformModelList(rawData);
-            setFetchedModels(transformedData);
-            setFetchStatus('success');
-        } catch (e) {
-            console.error("Failed to fetch models", e);
-            setFetchStatus('failed');
-            setFetchedModels(null);
-        }
-    };
-
-    const handleAddCustomProvider = () => {
-        if (!newProviderUrl || !fetchedModels) return;
-        let finalName = newProviderName.trim();
-        if (!finalName) {
-            try {
-                const urlStr = newProviderUrl.startsWith('http') ? newProviderUrl : `https://${newProviderUrl}`;
-                const url = new URL(urlStr);
-                const parts = url.hostname.split('.');
-                finalName = parts.length >= 2 ? parts[parts.length - 2] : url.hostname;
-                finalName = finalName.charAt(0).toUpperCase() + finalName.slice(1);
-            } catch { finalName = 'Custom'; }
-        }
-        const newProvider: CustomProvider = {
-            id: generateUUID(),
-            name: finalName,
-            apiUrl: newProviderUrl,
-            token: newProviderToken,
-            models: fetchedModels,
-            enabled: true
-        };
-        addCustomProvider(newProvider);
-        setCustomProviders(getCustomProviders());
-        window.dispatchEvent(new Event("storage"));
-        
-        setNewProviderName('');
-        setNewProviderUrl('');
-        setNewProviderToken('');
-        setFetchStatus('idle');
-        setFetchedModels(null);
-    };
-
-    const handleUpdateCustomProvider = (id: string, updates: Partial<CustomProvider>) => {
-        setCustomProviders(prev => prev.map(cp => cp.id === id ? { ...cp, ...updates } : cp));
-    };
-
-    const handleDeleteCustomProvider = (id: string) => {
-        removeCustomProvider(id);
-        setCustomProviders(getCustomProviders());
-        window.dispatchEvent(new Event("storage"));
-    };
-
-    const handleRefreshCustomModels = async (id: string) => {
-        const p = customProviders.find(cp => cp.id === id);
-        if (!p) return;
-        performModelRefresh(p);
-    };
-
-    const handleTestS3 = async () => {
-        setIsTestingS3(true);
-        setTestS3Result(null);
-        try {
-            const result = await testS3Connection(s3Config);
-            setTestS3Result(result);
-        } catch (e) {
-            setTestS3Result({ success: false, message: 'Test failed' });
-        } finally {
-            setIsTestingS3(false);
-        }
-    };
-
-    const handleTestWebDAV = async () => {
-        if (window.location.protocol === 'https:' && webdavConfig.url.startsWith('http:')) {
-            setTestWebDAVResult({ success: false, message: 'Mixed Content Error' });
-            return;
-        }
-        setIsTestingWebDAV(true);
-        setTestWebDAVResult(null);
-        try {
-            const result = await testWebDAVConnection(webdavConfig);
-            setTestWebDAVResult(result);
-        } catch (e) {
-            setTestWebDAVResult({ success: false, message: 'Test failed' });
-        } finally {
-            setIsTestingWebDAV(false);
-        }
-    };
-
-    const handleClearData = async () => {
-        try {
-            localStorage.clear();
-            sessionStorage.clear();
-            await clearOPFS();
-            window.location.reload();
-        } catch (e) {
-            console.error(e);
-            window.location.reload();
-        }
-    };
-
-    const handleSave = () => {
-        // Dispatch actions to update store tokens
-        setProviderTokens('huggingface', token);
-        setProviderTokens('gitee', giteeToken);
-        setProviderTokens('modelscope', msToken);
-        setProviderTokens('a4f', a4fToken);
-        
-        saveSystemPromptContent(systemPrompt);
-        saveTranslationPromptContent(translationPrompt);
-        saveVideoSettings(provider, videoSettings);
-        
-        saveStorageType(storageType);
-        saveS3Config(s3Config);
-        saveWebDAVConfig(webdavConfig);
-
-        saveEditModelConfig(editModelValue);
-        saveLiveModelConfig(liveModelValue);
-        saveTextModelConfig(textModelValue);
-        saveUpscalerModelConfig(upscalerModelValue);
-        
-        saveServiceMode(serviceMode);
-        saveCustomProviders(customProviders);
-
-        if (creationModelValue) {
-            const [newProvider, newModel] = creationModelValue.split(':');
-            setProvider(newProvider as any);
-            setModel(newModel as any);
-        }
-        
-        window.dispatchEvent(new Event("storage"));
-        onClose();
-    };
-
-    // Helper to update local state and calculate new stats immediately
-    const updateToken = (type: ProviderId, value: string) => {
-        const list = value.split(',').map(t => t.trim()).filter(t => t.length > 0);
-        const newStats = calculateStats(list, type);
-
-        if (type === 'huggingface') {
-            setToken(value);
-            setStats(newStats);
-        } else if (type === 'gitee') {
-            setGiteeToken(value);
-            setGiteeStats(newStats);
-        } else if (type === 'modelscope') {
-            setMsToken(value);
-            setMsStats(newStats);
-        } else if (type === 'a4f') {
-            setA4FToken(value);
-            setA4FStats(newStats);
-        }
-    };
-
-    return {
-        activeTab, setActiveTab,
-        serviceMode, handleServiceModeChange,
-        storageType, setStorageType,
-        
-        token, stats, 
-        giteeToken, giteeStats, 
-        msToken, msStats, 
-        a4fToken, a4fStats, 
-        updateToken,
-
-        customProviders, handleUpdateCustomProvider, handleDeleteCustomProvider, handleRefreshCustomModels, refreshingProviders, refreshSuccessProviders, refreshErrorProviders,
-        newProviderName, setNewProviderName, newProviderUrl, setNewProviderUrl, newProviderToken, setNewProviderToken, fetchStatus, fetchedModels, handleFetchCustomModels, handleAddCustomProvider,
-        handleClearAddForm: () => {
-            setNewProviderName('');
-            setNewProviderUrl('');
-            setNewProviderToken('');
-            setFetchedModels(null);
-            setFetchStatus('idle');
-        },
-        systemPrompt, setSystemPrompt, translationPrompt, setTranslationPrompt,
-        creationModelValue, setCreationModelValue,
-        editModelValue, setEditModelValue,
-        liveModelValue, setLiveModelValue,
-        textModelValue, setTextModelValue,
-        upscalerModelValue, setUpscalerModelValue,
-        videoSettings, setVideoSettings,
-        s3Config, setS3Config, showS3Secret: false,
-        webdavConfig, setWebdavConfig,
-        testS3Result, isTestingS3, handleTestS3,
-        testWebDAVResult, isTestingWebDAV, handleTestWebDAV,
-        handleClearData, handleSave,
-    };
+    handleSave,
+  };
 };

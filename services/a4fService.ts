@@ -1,101 +1,25 @@
-
 import { GeneratedImage, AspectRatioOption, ModelOption } from "../types";
-import { generateUUID, getSystemPromptContent, FIXED_SYSTEM_PROMPT_SUFFIX } from "./utils";
+import { getDimensions } from "./dimensions";
+import {
+  generateUUID,
+  getSystemPromptContent,
+  FIXED_SYSTEM_PROMPT_SUFFIX,
+} from "./utils";
 import { API_MODEL_MAP } from "../constants";
-import { useAppStore } from "../store/appStore";
+
+import { runWithTokenRetry } from "./tokenRetry";
 
 const A4F_GENERATE_API_URL = "https://api.a4f.co/v1/images/generations";
 const A4F_CHAT_API_URL = "https://api.a4f.co/v1/chat/completions";
 
-// --- Token Management System (Refactored to Store) ---
-
-const getNextAvailableToken = (): string | null => {
-  const store = useAppStore.getState();
-  store.resetDailyStatus('a4f');
-  
-  const tokens = store.tokens.a4f || [];
-  const status = store.tokenStatus.a4f;
-  
-  return tokens.find(t => !status.exhausted[t]) || null;
-};
-
-const markTokenExhausted = (token: string) => {
-  useAppStore.getState().markTokenExhausted('a4f', token);
-};
-
-const runWithA4FTokenRetry = async <T>(operation: (token: string) => Promise<T>): Promise<T> => {
-  const tokens = useAppStore.getState().tokens.a4f || [];
-
-  if (tokens.length === 0) {
-      throw new Error("error_a4f_token_required");
-  }
-
-  let lastError: any;
-  let attempts = 0;
-  const maxAttempts = tokens.length + 1;
-
-  while (attempts < maxAttempts) {
-    attempts++;
-    const token = getNextAvailableToken();
-
-    if (!token) {
-       throw new Error("error_a4f_token_exhausted");
-    }
-
-    try {
-      return await operation(token);
-    } catch (error: any) {
-      lastError = error;
-
-      if (error.name === 'AbortError') {
-        throw error;
-      }
-
-      const isQuotaError =
-        error.message?.includes("429") ||
-        error.status === 429 ||
-        error.message?.includes("insufficient_quota") ||
-        error.message?.includes("quota");
-
-      if (isQuotaError && token) {
-        console.warn(`A4F Token ${token.substring(0, 8)}... exhausted/error. Switching to next token.`);
-        markTokenExhausted(token);
-        continue;
-      }
-
-      throw error;
-    }
-  }
-
-  throw lastError || new Error("error_api_connection");
-};
-
-// --- Dimensions Logic ---
-
-const getBaseDimensions = (ratio: AspectRatioOption) => {
-    switch(ratio) {
-        case "16:9": return { width: 1024, height: 576 };
-        case "4:3": return { width: 1024, height: 768 };
-        case "3:2": return { width: 960, height: 640 };
-        case "9:16": return { width: 576, height: 1024 };
-        case "3:4": return { width: 768, height: 1024 };
-        case "2:3": return { width: 640, height: 960 };
-        case "1:1": default: return { width: 1024, height: 1024 };
-    }
-}
-
-const getDimensions = (ratio: AspectRatioOption, enableHD: boolean, model: ModelOption): { width: number; height: number } => {
-  const base = getBaseDimensions(ratio);
-  
-  if (!enableHD) return base;
-
-  // A4F Models might support different resolutions, applying general HD logic (2x)
-  const multiplier = 2; 
-
-  return {
-      width: Math.round(base.width * multiplier),
-      height: Math.round(base.height * multiplier)
-  };
+// Token retry delegates to shared service
+const runWithA4FTokenRetry = <T>(
+  operation: (token: string) => Promise<T>,
+): Promise<T> => {
+  return runWithTokenRetry(
+    "a4f",
+    operation as (token: string | null) => Promise<T>,
+  );
 };
 
 // --- Service Logic ---
@@ -107,17 +31,17 @@ export const generateA4FImage = async (
   seed?: number,
   steps?: number,
   enableHD: boolean = false,
-  guidanceScale?: number
+  guidanceScale?: number,
 ): Promise<GeneratedImage> => {
-  const { width, height } = getDimensions(aspectRatio, enableHD, model);
+  const { width, height } = getDimensions(aspectRatio, enableHD);
   const sizeString = `${width}x${height}`;
-  
+
   // A4F generally ignores seed for some models via API but we pass n=1
   // steps/guidance might not be supported in standard OpenAI image format, but we'll try standard payload
-  
+
   const apiModel = API_MODEL_MAP.a4f[model];
   if (!apiModel) {
-      throw new Error(`Model ${model} not supported on A4F`);
+    throw new Error(`Model ${model} not supported on A4F`);
   }
 
   return runWithA4FTokenRetry(async (token) => {
@@ -127,25 +51,27 @@ export const generateA4FImage = async (
         prompt,
         n: 1,
         size: sizeString,
-        response_format: "url"
+        response_format: "url",
       };
 
       const response = await fetch(A4F_GENERATE_API_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
+          Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error?.message || `A4F API Error: ${response.status}`);
+        throw new Error(
+          errData.error?.message || `A4F API Error: ${response.status}`,
+        );
       }
 
       const data = await response.json();
-      
+
       const imageUrl = data.data?.[0]?.url;
 
       if (!imageUrl) {
@@ -155,14 +81,14 @@ export const generateA4FImage = async (
       return {
         id: generateUUID(),
         url: imageUrl,
-        model, 
+        model,
         prompt,
         aspectRatio,
         timestamp: Date.now(),
         seed: seed, // A4F might not return seed
         steps: steps,
         guidanceScale,
-        provider: 'a4f'
+        provider: "a4f",
       };
     } catch (error) {
       console.error("A4F Image Generation Error:", error);
@@ -171,43 +97,47 @@ export const generateA4FImage = async (
   });
 };
 
-export const optimizePromptA4F = async (originalPrompt: string, model: string = 'gemini-2.5-flash-lite'): Promise<string> => {
+export const optimizePromptA4F = async (
+  originalPrompt: string,
+  model: string = "gemini-2.5-flash-lite",
+): Promise<string> => {
   return runWithA4FTokenRetry(async (token) => {
     try {
-      const systemInstruction = getSystemPromptContent() + FIXED_SYSTEM_PROMPT_SUFFIX;
+      const systemInstruction =
+        getSystemPromptContent() + FIXED_SYSTEM_PROMPT_SUFFIX;
       const apiModel = API_MODEL_MAP.a4f[model] || model;
 
       const response = await fetch(A4F_CHAT_API_URL, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           model: apiModel,
           messages: [
             {
-              role: 'system',
-              content: systemInstruction
+              role: "system",
+              content: systemInstruction,
             },
             {
-              role: 'user',
-              content: originalPrompt
-            }
+              role: "user",
+              content: originalPrompt,
+            },
           ],
           temperature: 0.7,
           max_tokens: 1000,
-          stream: false
+          stream: false,
         }),
       });
 
       if (!response.ok) {
-          throw new Error("error_prompt_optimization_failed");
+        throw new Error("error_prompt_optimization_failed");
       }
 
       const data = await response.json();
       const content = data.choices?.[0]?.message?.content;
-      
+
       return content || originalPrompt;
     } catch (error) {
       console.error("A4F Prompt Optimization Error:", error);

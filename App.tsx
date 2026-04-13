@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, memo, useEffect } from 'react';
-import { useAppStore } from './store/appStore';
+import { useUIStore } from './store/uiStore';
 import { useAppInit } from './hooks/useAppInit';
 import { useCloudUpload } from './hooks/useCloudUpload';
 import { Header } from './components/Header';
@@ -10,12 +10,14 @@ import { CloudGalleryView } from './views/CloudGalleryView';
 import { SettingsModal } from './components/SettingsModal';
 import { FAQModal } from './components/FAQModal';
 import { AuthModal } from './components/AuthModal';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { Toaster } from 'sonner';
 
 // Memoize Header to prevent re-renders when App re-renders
 const MemoizedHeader = memo(Header);
 
 export default function App() {
-  const { currentView } = useAppStore();
+  const { currentView } = useUIStore();
   
   // Transition State
   const [displayView, setDisplayView] = useState(currentView);
@@ -23,6 +25,7 @@ export default function App() {
 
   useEffect(() => {
     if (currentView !== displayView) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsTransitioning(true);
       const timer = setTimeout(() => {
         setDisplayView(currentView);
@@ -66,6 +69,7 @@ export default function App() {
 
         {/* Main Content Area with Transition */}
         <div className={`flex-1 flex flex-col w-full transition-all duration-200 ease-in-out ${isTransitioning ? 'opacity-0 translate-y-2 scale-[0.99]' : 'opacity-100 translate-y-0 scale-100'}`}>
+            <ErrorBoundary>
             {displayView === 'creation' ? (
                 <CreationView />
             ) : displayView === 'editor' ? (
@@ -83,6 +87,7 @@ export default function App() {
                     />
                 </main>
             )}
+            </ErrorBoundary>
         </div>
         
         {/* Modals */}
@@ -103,6 +108,18 @@ export default function App() {
             onSubmit={handlePasswordSubmit}
             onSwitchLocal={handleSwitchToLocal}
             error={passwordError}
+        />
+
+        <Toaster 
+            theme="dark"
+            position="top-center"
+            toastOptions={{
+                style: {
+                    background: '#0D0B14',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    color: '#fff',
+                },
+            }}
         />
       </div>
     </div>

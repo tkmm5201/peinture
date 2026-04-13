@@ -1,161 +1,57 @@
-
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en" class="dark">
-<head>
-    <meta charset="utf-8"/>
-    <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+      name="viewport"
+    />
     <title>Peinture - Free AI Image Generator</title>
-    <meta name="description" content="Create stunning AI art with Peinture. A free, dark-themed AI image generator featuring Z-Image Turbo & Qwen models. 4x Upscaling, prompt optimization, and history gallery included." />
-    <meta name="keywords" content="AI image generator, text to image, AI art, stable diffusion, Z-Image Turbo, Qwen, free AI tool, image upscaler, prompt engineering" />
-    
+    <meta
+      name="description"
+      content="Create stunning AI art with Peinture. A free, dark-themed AI image generator featuring Z-Image Turbo & Qwen models. 4x Upscaling, prompt optimization, and history gallery included."
+    />
+    <meta
+      name="keywords"
+      content="AI image generator, text to image, AI art, stable diffusion, Z-Image Turbo, Qwen, free AI tool, image upscaler, prompt engineering"
+    />
+
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://peinture.9th.xyz/" />
     <meta property="og:title" content="Peinture - Free AI Image Generator" />
-    <meta property="og:description" content="Create stunning AI art with Peinture. Free, fast, and high-quality AI image generation." />
-    <meta property="og:image" content="https://cdn.u14.app/upload/WX20251209-170748@2x.png" />
+    <meta
+      property="og:description"
+      content="Create stunning AI art with Peinture. Free, fast, and high-quality AI image generation."
+    />
+    <meta
+      property="og:image"
+      content="https://cdn.u14.app/upload/WX20251209-170748@2x.png"
+    />
 
     <!-- Twitter -->
     <meta property="twitter:card" content="summary_large_image" />
-    <meta property="twitter:title" content="Peinture - Free AI Image Generator" />
-    <meta property="twitter:description" content="Create stunning AI art with Peinture. Free, fast, and high-quality AI image generation." />
-    <meta property="twitter:image" content="https://cdn.u14.app/upload/WX20251209-170748@2x.png" />
-    
-    <link rel="icon" href="https://cdn.u14.app/upload/peinture_logo.svg" type="svg+xml" />
-    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-    <style>
-        /* Custom Scrollbar for the gallery */
-        .scrollbar-hide::-webkit-scrollbar {
-            display: none;
-        }
-        .scrollbar-hide {
-            -ms-overflow-style: none;
-            scrollbar-width: none;
-        }
-        .bg-gradient-brilliant {
-            background-image: radial-gradient(at 20% 90%, hsla(252, 70%, 55%, 0.4) 0px, transparent 50%),
-                              radial-gradient(at 80% 10%, hsla(28, 90%, 50%, 0.4) 0px, transparent 50%),
-                              radial-gradient(at 50% 50%, hsla(340, 80%, 60%, 0.3) 0px, transparent 50%);
-            background-attachment: fixed;
-        }
-        .generate-button-gradient {
-            background-image: linear-gradient(to right, #6D28D9, #DB2777, #F59E0B);
-            background-size: 200% auto;
-            transition: background-position 0.5s ease;
-        }
-        .generate-button-gradient:hover {
-            background-position: right center;
-        }
-        body {
-            background-color: #0D0B14;
-            color: white;
-        }
+    <meta
+      property="twitter:title"
+      content="Peinture - Free AI Image Generator"
+    />
+    <meta
+      property="twitter:description"
+      content="Create stunning AI art with Peinture. Free, fast, and high-quality AI image generation."
+    />
+    <meta
+      property="twitter:image"
+      content="https://cdn.u14.app/upload/WX20251209-170748@2x.png"
+    />
 
-        /* Custom Range Slider */
-        input[type=range].custom-range {
-            -webkit-appearance: none;
-            appearance: none;
-            background: transparent;
-            cursor: pointer;
-            width: 100%;
-            height: 20px; /* Ensure touch target and thumb scale space */
-            margin: 0;
-        }
-        
-        /* Track */
-        input[type=range].custom-range::-webkit-slider-runnable-track {
-            height: 4px;
-            border-radius: 999px;
-            background-color: rgba(255, 255, 255, 0.15);
-        }
-        input[type=range].custom-range::-moz-range-track {
-            height: 4px;
-            border-radius: 999px;
-            background-color: rgba(255, 255, 255, 0.15);
-        }
-        
-        /* Thumb */
-        input[type=range].custom-range::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            appearance: none;
-            height: 12px;
-            width: 12px;
-            border-radius: 50%;
-            background-color: currentColor;
-            margin-top: -4px; /* (Track 4px - Thumb 12px) / 2 */
-            transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
-            box-shadow: 0 0 0 1px rgba(0,0,0,0.1);
-        }
-        input[type=range].custom-range::-moz-range-thumb {
-            border: none;
-            height: 12px;
-            width: 12px;
-            border-radius: 50%;
-            background-color: currentColor;
-            transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
-            box-shadow: 0 0 0 1px rgba(0,0,0,0.1);
-        }
-        
-        /* Interaction States */
-        input[type=range].custom-range:hover::-webkit-slider-thumb {
-            transform: scale(1.5);
-        }
-        input[type=range].custom-range:hover::-moz-range-thumb {
-            transform: scale(1.5);
-        }
-        input[type=range].custom-range:active::-webkit-slider-thumb {
-            transform: scale(1.5);
-            cursor: grabbing;
-        }
-        input[type=range].custom-range:active::-moz-range-thumb {
-            transform: scale(1.5);
-            cursor: grabbing;
-        }
-        input[type=range].custom-range:focus {
-            outline: none;
-        }
-    </style>
-    <script>
-        tailwind.config = {
-            darkMode: "class",
-            theme: {
-                extend: {
-                    colors: {
-                        "primary": "#4b2bee",
-                        "background-light": "#f6f6f8",
-                        "background-dark": "#0D0B14",
-                    },
-                    fontFamily: {
-                        "display": ["ui-sans-serif", "system-ui", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "Roboto", "Helvetica Neue", "Arial", "sans-serif"]
-                    },
-                    borderRadius: {
-                        "DEFAULT": "0.25rem",
-                        "lg": "0.5rem",
-                        "xl": "0.75rem",
-                        "full": "9999px"
-                    },
-                },
-            },
-        }
-    </script>
-<script type="importmap">
-{
-  "imports": {
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "react": "https://aistudiocdn.com/react@^19.2.0",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.555.0",
-    "react-zoom-pan-pinch": "https://aistudiocdn.com/react-zoom-pan-pinch@^3.7.0",
-    "opfs-tools": "https://aistudiocdn.com/opfs-tools@^0.7.4",
-    "zustand": "https://aistudiocdn.com/zustand@^5.0.10",
-    "zustand/middleware": "https://aistudiocdn.com/zustand@^5.0.10/middleware",
-    "zustand/": "https://aistudiocdn.com/zustand@^5.0.10/"
-  }
-}
-</script>
-</head>
-<body class="bg-background-dark font-display text-white">
+    <link
+      rel="icon"
+      href="https://cdn.u14.app/upload/peinture_logo.svg"
+      type="svg+xml"
+    />
+  </head>
+  <body class="bg-background-dark font-display text-white">
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
-</body>
+  </body>
 </html>
