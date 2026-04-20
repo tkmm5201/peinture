@@ -12,7 +12,7 @@ import { API_MODEL_MAP } from "../constants";
 
 import { runWithTokenRetry } from "./tokenRetry";
 
-const ZIMAGE_BASE_API_URL = "https://mrfakename-z-image-turbo.hf.space";
+const ZIMAGE_BASE_API_URL = "https://tongyi-mai-z-image-turbo.hf.space";
 const ZIMAGE_MODEL_BASE_API_URL = "https://mrfakename-z-image.hf.space";
 const QWEN_IMAGE_BASE_API_URL = "https://mcp-tools-qwen-image-fast.hf.space";
 const OVIS_IMAGE_BASE_API_URL = "https://aidc-ai-ovis-image-7b.hf.space";
