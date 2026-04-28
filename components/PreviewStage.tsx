@@ -10,7 +10,6 @@ interface PreviewStageProps {
   currentImage: GeneratedImage | null;
   isWorking: boolean;
   isTranslating: boolean;
-  elapsedTime: number;
   isComparing: boolean;
   tempUpscaledImage: string | null;
   showInfo: boolean;
@@ -24,11 +23,26 @@ interface PreviewStageProps {
   isGeneratingVideoPrompt?: boolean;
 }
 
+const TimerDisplay = () => {
+  const [elapsed, setElapsed] = React.useState(0);
+  React.useEffect(() => {
+    const start = Date.now();
+    const interval = setInterval(() => {
+      setElapsed((Date.now() - start) / 1000);
+    }, 100);
+    return () => clearInterval(interval);
+  }, []);
+  return (
+    <p className="mt-2 font-mono text-purple-300 text-lg">
+      {elapsed.toFixed(1)}s
+    </p>
+  );
+};
+
 export const PreviewStage: React.FC<PreviewStageProps> = ({
   currentImage,
   isWorking,
   isTranslating,
-  elapsedTime,
   isComparing,
   tempUpscaledImage,
   setImageDimensions,
@@ -100,11 +114,7 @@ export const PreviewStage: React.FC<PreviewStageProps> = ({
           <p className="mt-8 text-white/80 font-medium animate-pulse text-lg">
             {isTranslating ? t.translating : t.dreaming}
           </p>
-          {!isTranslating && (
-            <p className="mt-2 font-mono text-purple-300 text-lg">
-              {elapsedTime.toFixed(1)}s
-            </p>
-          )}
+          {!isTranslating && <TimerDisplay />}
         </div>
       ) : null}
       {displayImage ? (
