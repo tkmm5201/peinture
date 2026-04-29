@@ -129,6 +129,40 @@ To host on any standard web server or CDN:
 
 4. **Important for SPAs**: Ensure your server is configured to redirect all 404 requests to `index.html` so that React Router (if added in the future) or client-side logic handles the routing.
 
+### Option 4: Docker & Docker Compose
+
+We provide an official, lightweight Docker image to easily deploy Peinture on your own server. The built-in Nginx securely handles SPA routing and image CORS proxying.
+
+**Using Docker Run:**
+
+```bash
+docker run -d -p 80:80 --name peinture ghcr.io/amery2010/peinture:latest
+```
+
+**Using Docker Compose:**
+
+Create a `docker-compose.yml` file:
+
+```yaml
+version: "3.8"
+
+services:
+  peinture:
+    image: ghcr.io/amery2010/peinture:latest
+    container_name: peinture-app
+    ports:
+      - "80:80"
+    restart: unless-stopped
+```
+
+Then start the service:
+
+```bash
+docker-compose up -d
+```
+
+Your app will be available at `http://localhost`.
+
 ## ⚙️ Configuration
 
 You can configure API tokens in the app's **Settings** menu.
