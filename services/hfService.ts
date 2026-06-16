@@ -170,7 +170,8 @@ const runGradioTask = async <T>(
 
                 // Check if this is a quota error to trigger token rotation
                 if (
-                  fullMessage.includes("You have exceeded your free GPU quota")
+                  fullMessage.includes("quota exceeded") ||
+                  fullMessage.includes("exceeded your free")
                 ) {
                   throw new Error(QUOTA_ERROR_KEY);
                 }
