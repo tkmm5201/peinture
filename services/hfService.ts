@@ -583,7 +583,21 @@ export const generateImage = async (
   }
 };
 
-export const upscaler = async (url: string): Promise<{ url: string }> => {
+// 如果顶部没有定义 UpscalerModelOption 类型，建议在 upscaler 函数上方加上类型声明
+export type UpscalerModelOption =
+  | "4xBHI_dat2_real"                       // 默认通用推荐
+  | "4xNomos2_hq_dat2"                      // 高画质通用
+  | "4xRealWebPhoto_v4_dat2"                // 真人/写实摄影
+  | "4xNomos8kDAT"                          // 8K 高精细节
+  | "4xArtFaces_realplksr_dysample"         // 艺术/人脸优化
+  | "2xHFA2kCompact"                        // 2倍轻量放大
+  | "1xDeNoise_realplksr_otf"               // 1倍纯降噪
+  | (string & {});                          // 允许自定义传入任意模型名
+
+export const upscaler = async (
+  url: string,
+  model: UpscalerModelOption = "4xBHI_dat2_real", // 👈 增加 model 参数，并指定默认模型
+): Promise<{ url: string }> => {
   // Fetch image as blob first to upload to Gradio
   const blob = await fetchBlob(url);
 
@@ -596,22 +610,25 @@ export const upscaler = async (url: string): Promise<{ url: string }> => {
       const output: any = await runGradioTask(
         UPSCALER_BASE_API_URL,
         [
-          { path: filePath, meta: { _type: "gradio.FileData" } },
-          "RealESRGAN_x4plus",
-          0.5,
-          false,
-          4,
+          { path: filePath, meta: { _type: "gradio.FileData" } }, // 👈 改动 1: 参数 1 保持图片对象
+          model,                                                 // 👈 改动 2: 参数 2 传模型变量（移除了原先的多余 3 个参数）
         ],
-        1, // fn_index
-        17, // trigger_id
+        1,  // fn_index
+        1,  // 👈 改动 3: trigger_id 由原来的 17 改为 1
         token,
       );
 
       const data = output.data;
-      if (!data || !data[0] || !data[0].url)
-        throw new Error("error_invalid_response");
+      
+      // 👈 改动 4: 新 Space 接口的返回值结构适配（优先获取 index 1 的无损图片对象）
+      const resultFile = data?.[1] || data?.[0]?.[1] || data?.[0];
+      const resultUrl = resultFile?.url || resultFile?.path;
 
-      return { url: data[0].url };
+      if (!resultUrl) {
+        throw new Error("error_invalid_response");
+      }
+
+      return { url: resultUrl };
     } catch (error) {
       console.error("Upscaler Error:", error);
       throw Object.assign(new Error("error_upscale_failed"), { cause: error });
