@@ -14,15 +14,17 @@ import { runWithTokenRetry } from "./tokenRetry";
 
 const ZIMAGE_BASE_API_URL = "https://laruss5-z-image-turbo.hf.space";
 //const ZIMAGE_BASE_API_URL = "https://mrfakename-z-image-turbo.hf.space";
-const ZIMAGE_MODEL_BASE_API_URL = "https://laruss5-z-image-turbo.hf.space";
+const ZIMAGE_MODEL_BASE_API_URL = "https://mrfakename-z-image.hf.space";
 const QWEN_IMAGE_BASE_API_URL = "https://mcp-tools-qwen-image-fast.hf.space";
 const OVIS_IMAGE_BASE_API_URL = "https://aidc-ai-ovis-image-7b.hf.space";
 const FLUX_SCHNELL_BASE_API_URL =
   "https://black-forest-labs-flux-1-schnell.hf.space";
-const UPSCALER_BASE_API_URL = "https://tuan2308-upscaler.hf.space";
+const UPSCALER_BASE_API_URL = "https://phips-upscaler.hf.space";
+//const UPSCALER_BASE_API_URL = "https://tuan2308-upscaler.hf.space";
 const POLLINATIONS_API_URL = "https://text.pollinations.ai/openai";
-const WAN2_VIDEO_API_URL =
-  "https://fradeck619-wan2-2-fp8da-aoti-faster.hf.space";
+const WAN2_VIDEO_API_URL = "https://kulkas2pintu-wan555.hf.space";
+//const WAN2_VIDEO_API_URL = "https://fradeck619-wan2-2-fp8da-aoti-faster.hf.space";
+
 export const QWEN_IMAGE_EDIT_BASE_API_URL =
   "https://linoyts-qwen-image-edit-2511-fast.hf.space";
 
