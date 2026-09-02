@@ -57,6 +57,43 @@ const normalizeSpaceUrl = (
   return url;
 };
 
+// Free HF Spaces sleep after inactivity; the first request to a sleeping
+// Space returns 503 while it boots. Poll /config (available on Gradio 4 & 5)
+// until the Space is awake, mirroring the official Gradio client behaviour.
+const spaceAwakeCache = new Map<string, number>();
+const AWAKE_CACHE_MS = 60_000;
+
+const ensureSpaceAwake = async (
+  baseUrl: string,
+  token?: string | null,
+  signal?: AbortSignal,
+): Promise<void> => {
+  const now = Date.now();
+  const cached = spaceAwakeCache.get(baseUrl);
+  if (cached && now - cached < AWAKE_CACHE_MS) return;
+
+  const deadline = now + 180_000; // wait up to 3 minutes for boot
+  while (Date.now() < deadline) {
+    signal?.throwIfAborted();
+    try {
+      const res = await fetch(`${baseUrl}/config`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        signal,
+      });
+      if (res.ok) {
+        spaceAwakeCache.set(baseUrl, Date.now());
+        return;
+      }
+      // 401/403 means the Space is up but rejecting auth — stop waiting
+      if (res.status === 401 || res.status === 403) return;
+    } catch {
+      // network error while booting → keep polling
+    }
+    await new Promise((r) => setTimeout(r, 5000));
+  }
+  throw new Error("Space is waking up, please try again in a moment");
+};
+
 // --- Gradio File Upload Helper ---
 
 export const uploadToGradio = async (
@@ -65,6 +102,8 @@ export const uploadToGradio = async (
   token: string | null,
   signal?: AbortSignal,
 ): Promise<string> => {
+  await ensureSpaceAwake(baseUrl, token, signal);
+
   const formData = new FormData();
   formData.append("files", image);
 
@@ -121,6 +160,8 @@ const runGradioTask = async <T>(
   signal?: AbortSignal,
 ): Promise<T> => {
   const session_hash = Date.now().toString(16);
+
+  await ensureSpaceAwake(baseUrl, token, signal);
 
   // 1. Join Queue
   const payload: GradioPayload = {
@@ -627,8 +668,11 @@ export const generateImage = async (
 };
 
 export const upscaler = async (url: string): Promise<{ url: string }> => {
-  // Fetch image as blob first to upload to Gradio
-  const blob = await fetchBlob(url);
+  // Fetch image as blob first to upload to Gradio. History images are stored
+  // in OPFS (opfs:// URLs), which fetchBlob cannot read — use fetchCloudBlob.
+  const blob = url.startsWith("opfs://")
+    ? await fetchCloudBlob(url)
+    : await fetchBlob(url);
 
   return runWithHFTokenRetry(async (token) => {
     try {
