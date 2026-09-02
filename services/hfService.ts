@@ -16,6 +16,8 @@ const ZIMAGE_BASE_API_URL = "https://laruss5-z-image-turbo.hf.space";
 //const ZIMAGE_BASE_API_URL = "https://mrfakename-z-image-turbo.hf.space";
 const ZIMAGE_MODEL_BASE_API_URL = "https://mrfakename-z-image.hf.space";
 const QWEN_IMAGE_BASE_API_URL = "https://mcp-tools-qwen-image-fast.hf.space";
+const QWEN_IMAGE_EDIT_BASE_API_URL =
+  "https://linoyts-qwen-image-edit-2511-fast.hf.space";
 const OVIS_IMAGE_BASE_API_URL = "https://aidc-ai-ovis-image-7b.hf.space";
 const FLUX_SCHNELL_BASE_API_URL =
   "https://black-forest-labs-flux-1-schnell.hf.space";
@@ -37,6 +39,24 @@ const runWithHFTokenRetry = <T>(
   return runWithTokenRetry("huggingface", operation);
 };
 
+// Gradio 5.x Spaces serve files via absolute URLs; Gradio 4.x / self-hosted
+// Spaces may return relative paths like "/file=..." or "/gradio_api/file=..."
+const normalizeSpaceUrl = (
+  baseUrl: string,
+  url?: string | null,
+): string => {
+  if (!url || typeof url !== "string") return "";
+  if (
+    /^https?:\/\//.test(url) ||
+    url.startsWith("data:") ||
+    url.startsWith("blob:")
+  ) {
+    return url;
+  }
+  if (url.startsWith("/")) return `${baseUrl}${url}`;
+  return url;
+};
+
 // --- Gradio File Upload Helper ---
 
 export const uploadToGradio = async (
@@ -53,12 +73,22 @@ export const uploadToGradio = async (
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${baseUrl}/gradio_api/upload`, {
+  // Gradio 5.x uses /gradio_api/upload; Gradio 4.x uses the legacy /upload
+  let response = await fetch(`${baseUrl}/gradio_api/upload`, {
     method: "POST",
     headers,
     body: formData,
     signal,
   });
+
+  if (response.status === 404) {
+    response = await fetch(`${baseUrl}/upload`, {
+      method: "POST",
+      headers,
+      body: formData,
+      signal,
+    });
+  }
 
   if (!response.ok) {
     throw new Error(`Failed to upload image to Gradio: ${response.statusText}`);
@@ -101,7 +131,11 @@ const runGradioTask = async <T>(
     event_data: null,
   };
 
-  const joinResponse = await fetch(`${baseUrl}/gradio_api/queue/join`, {
+  // Gradio 5.x exposes queue routes under /gradio_api; Gradio 4.x uses the
+  // legacy /queue/* routes. Fall back on 404 so both Space versions work.
+  let apiPrefix = "/gradio_api";
+
+  const joinOptions: RequestInit = {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -109,7 +143,20 @@ const runGradioTask = async <T>(
     },
     body: JSON.stringify(payload),
     signal,
-  });
+  };
+
+  let joinResponse = await fetch(
+    `${baseUrl}${apiPrefix}/queue/join`,
+    joinOptions,
+  );
+
+  if (joinResponse.status === 404) {
+    apiPrefix = "";
+    joinResponse = await fetch(
+      `${baseUrl}${apiPrefix}/queue/join`,
+      joinOptions,
+    );
+  }
 
   if (!joinResponse.ok) {
     // Handle 429 or other errors as quota exhausted if applicable
@@ -119,7 +166,7 @@ const runGradioTask = async <T>(
 
   // 2. Listen for Result via SSE
   const sseResponse = await fetch(
-    `${baseUrl}/gradio_api/queue/data?session_hash=${session_hash}`,
+    `${baseUrl}${apiPrefix}/queue/data?session_hash=${session_hash}`,
     {
       headers: {
         Accept: "text/event-stream",
@@ -589,25 +636,31 @@ export const upscaler = async (url: string): Promise<{ url: string }> => {
       const filePath = await uploadToGradio(UPSCALER_BASE_API_URL, blob, token);
 
       // 2. Call inference
+      // phips-upscaler fn_index 1 (upscale_image) takes 2 inputs:
+      // Input Image + Model dropdown; trigger_id 6 = "Upscale" button
       const output: any = await runGradioTask(
         UPSCALER_BASE_API_URL,
         [
           { path: filePath, meta: { _type: "gradio.FileData" } },
           "4xArtFaces_realplksr_dysample",
-          0.5,
-          false,
-          4,
         ],
         1, // fn_index
-        17, // trigger_id
+        6, // trigger_id
         token,
       );
 
       const data = output.data;
-      if (!data || !data[0] || !data[0].url)
-        throw new Error("error_invalid_response");
+      // Output layout: data[0] = [original, upscaled] webp previews for the
+      // compare slider; data[1] = full-quality lossless PNG file output
+      const fileUrl = normalizeSpaceUrl(UPSCALER_BASE_API_URL, data?.[1]?.url);
+      const previewUrl = normalizeSpaceUrl(
+        UPSCALER_BASE_API_URL,
+        Array.isArray(data?.[0]) ? data[0][1]?.url : data?.[0]?.url,
+      );
+      const url = fileUrl || previewUrl;
+      if (!url) throw new Error("error_invalid_response");
 
-      return { url: data[0].url };
+      return { url };
     } catch (error) {
       console.error("Upscaler Error:", error);
       throw Object.assign(new Error("error_upscale_failed"), { cause: error });
@@ -691,31 +744,43 @@ export const createVideoTaskHF = async (
       }
 
       // Call Inference using Queue
+      // kulkas2pintu-wan555 fn_index 0 (generate_video) inputs, in component
+      // order: Input Image | Last Image | Prompt | Steps | Negative Prompt |
+      // Duration | Guidance (high noise) | Guidance 2 (low noise) | Seed |
+      // Randomize seed | Video Quality | Scheduler | Flow Shift | FPS |
+      // Display result | Safe Mode. trigger_id 23 = "Generate Video" button.
       const output: any = await runGradioTask(
         WAN2_VIDEO_API_URL,
         [
           { path: filePath, meta: { _type: "gradio.FileData" } },
+          null, // Last Image (optional)
           settings.prompt,
           settings.steps,
           VIDEO_NEGATIVE_PROMPT,
           settings.duration,
-          settings.guidance, // 1st guidance
-          settings.guidance, // 2nd guidance
+          settings.guidance, // Guidance Scale - high noise stage
+          settings.guidance, // Guidance Scale 2 - low noise stage
           finalSeed,
           false, // Randomize seed
+          6, // Video Quality (Space default)
+          "UniPCMultistep", // Scheduler (Space default)
+          3, // Flow Shift (Space default)
+          16, // Video Fluidity / FPS (Space default)
+          true, // Display result
+          true, // Safe Mode (Space default)
         ],
         0, // fn_index
-        16, // trigger_id
+        23, // trigger_id
         token,
       );
 
       const data = output.data;
-      if (data && data[0]) {
-        const vid = data[0];
-        if (vid?.video?.url) return vid.video.url;
-        if (vid?.url) return vid.url;
-        return vid;
-      }
+      // Outputs: data[0] = video component ({video: {url}} or FileData),
+      // data[1] = download file, data[2] = seed used
+      const rawUrl =
+        data?.[0]?.video?.url || data?.[0]?.url || data?.[1]?.url;
+      const url = normalizeSpaceUrl(WAN2_VIDEO_API_URL, rawUrl);
+      if (url) return url;
 
       throw new Error("No video output returned");
     } catch (error) {
