@@ -387,51 +387,53 @@ const runGradioV2Task = async <T>(
   let buffer = "";
 
   // Per SSE-event accumulator
-  let currentEventName = "";
-  let currentDataLines: string[] = [];
+  let evName = "";
+  let dataLines: string[] = [];
 
-  const flushEvent = () => {
-    if (currentDataLines.length === 0 && !currentEventName) return;
-    const rawData = currentDataLines.join("\n").trim();
-    currentEventName = "";
-    currentDataLines = [];
-    if (!rawData) return;
+  // Returns { result } or undefined; throws for real errors
+  const flushEvent = (): { result: T } | undefined => {
+    // Capture BEFORE resetting accumulators
+    const name = evName;
+    const raw = dataLines.join("\n").trim();
+    evName = "";
+    dataLines = [];
 
-    let parsed: any;
-    try {
-      parsed = JSON.parse(rawData);
-    } catch {
-      return; // ignore non-JSON events (heartbeat etc.)
+    if (!name && !raw) return undefined;
+
+    let parsed: unknown = undefined;
+    if (raw) {
+      try { parsed = JSON.parse(raw); } catch { /* non-JSON payload → ignore */ }
     }
 
     // --- Gradio 6.x new protocol: event=complete, data=raw array ---
-    if (currentEventName === "complete" && Array.isArray(parsed)) {
-      // Normalize URL in case it has stray backticks/spaces (observed)
+    if (name === "complete" && Array.isArray(parsed)) {
       for (const item of parsed) {
-        if (item && typeof item.url === "string") {
-          item.url = item.url.replace(/[`\s]/g, "");
+        if (item && typeof item === "object" && typeof (item as any).url === "string") {
+          (item as any).url = (item as any).url.replace(/[`\s]/g, "");
         }
       }
-      return { data: parsed } as T;
+      return { result: { data: parsed } as T };
     }
 
-    // --- Gradio 6.x error: event=error, data=msg object ---
-    if (currentEventName === "error") {
-      const detail = parsed.detail || parsed.message || JSON.stringify(parsed).slice(0, 200);
+    if (name === "error" && parsed && typeof parsed === "object") {
+      const p = parsed as Record<string, any>;
+      const detail = p.detail || p.message || JSON.stringify(parsed).slice(0, 200);
       throw new Error(`Gradio v2 error: ${detail}`);
     }
 
-    // --- Older v2 protocol (Gradio 5.x): data is {msg, success, output} ---
-    if (parsed.msg === "process_completed") {
-      if (parsed.success) {
-        const output = parsed.output;
-        // output may already be an array, or {data: [...]}
-        if (Array.isArray(output)) return { data: output } as T;
-        return output as T;
+    // --- Older Gradio 5.x v2 protocol: {msg, success, output} ---
+    if (parsed && typeof parsed === "object" && (parsed as any).msg === "process_completed") {
+      const m = parsed as Record<string, any>;
+      if (m.success) {
+        const out = m.output;
+        const result: T = Array.isArray(out)
+          ? ({ data: out } as T)
+          : (out as T);
+        return { result };
       } else {
-        const out = parsed.output || {};
-        const detail = out[" "] || out.error || parsed.error || "";
-        const title = parsed.title || out.title || "Gradio v2 task failed";
+        const out = m.output || {};
+        const detail = out[" "] || out.error || m.error || "";
+        const title = m.title || out.title || "Gradio v2 task failed";
         const fullMessage = detail ? `${title}: ${detail}` : title;
         if (fullMessage.includes("exceeded your free GPU quota")) {
           throw new Error(QUOTA_ERROR_KEY);
@@ -439,6 +441,9 @@ const runGradioV2Task = async <T>(
         throw new Error(fullMessage);
       }
     }
+
+    // Heartbeats, progress events, null payloads, unknown events → silently ignore
+    return undefined;
   };
 
   try {
@@ -454,25 +459,22 @@ const runGradioV2Task = async <T>(
         const line = rawLine.replace(/\r$/, "");
 
         if (line === "") {
-          // Empty line → end of current SSE event
-          const result = flushEvent();
-          if (result !== undefined) return result;
+          const r = flushEvent();
+          if (r !== undefined) return r.result;
           continue;
         }
 
         if (line.startsWith("event:")) {
-          currentEventName = line.slice(6).trim();
+          evName = line.slice(6).trim();
         } else if (line.startsWith("data:")) {
           const d = line.slice(5);
-          // spec: single leading space after colon is optional
-          currentDataLines.push(d.startsWith(" ") ? d.slice(1) : d);
+          dataLines.push(d.startsWith(" ") ? d.slice(1) : d);
         }
-        // ignore comments (:...) and unknown lines
+        // comments (:...) and unknown prefixes → ignore
       }
     }
-    // Flush any final event without trailing blank line
     const finalResult = flushEvent();
-    if (finalResult !== undefined) return finalResult;
+    if (finalResult !== undefined) return finalResult.result;
   } finally {
     reader.releaseLock();
   }
