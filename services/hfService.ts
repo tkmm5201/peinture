@@ -386,67 +386,93 @@ const runGradioV2Task = async <T>(
   const decoder = new TextDecoder();
   let buffer = "";
 
+  // Per SSE-event accumulator
+  let currentEventName = "";
+  let currentDataLines: string[] = [];
+
+  const flushEvent = () => {
+    if (currentDataLines.length === 0 && !currentEventName) return;
+    const rawData = currentDataLines.join("\n").trim();
+    currentEventName = "";
+    currentDataLines = [];
+    if (!rawData) return;
+
+    let parsed: any;
+    try {
+      parsed = JSON.parse(rawData);
+    } catch {
+      return; // ignore non-JSON events (heartbeat etc.)
+    }
+
+    // --- Gradio 6.x new protocol: event=complete, data=raw array ---
+    if (currentEventName === "complete" && Array.isArray(parsed)) {
+      // Normalize URL in case it has stray backticks/spaces (observed)
+      for (const item of parsed) {
+        if (item && typeof item.url === "string") {
+          item.url = item.url.replace(/[`\s]/g, "");
+        }
+      }
+      return { data: parsed } as T;
+    }
+
+    // --- Gradio 6.x error: event=error, data=msg object ---
+    if (currentEventName === "error") {
+      const detail = parsed.detail || parsed.message || JSON.stringify(parsed).slice(0, 200);
+      throw new Error(`Gradio v2 error: ${detail}`);
+    }
+
+    // --- Older v2 protocol (Gradio 5.x): data is {msg, success, output} ---
+    if (parsed.msg === "process_completed") {
+      if (parsed.success) {
+        const output = parsed.output;
+        // output may already be an array, or {data: [...]}
+        if (Array.isArray(output)) return { data: output } as T;
+        return output as T;
+      } else {
+        const out = parsed.output || {};
+        const detail = out[" "] || out.error || parsed.error || "";
+        const title = parsed.title || out.title || "Gradio v2 task failed";
+        const fullMessage = detail ? `${title}: ${detail}` : title;
+        if (fullMessage.includes("exceeded your free GPU quota")) {
+          throw new Error(QUOTA_ERROR_KEY);
+        }
+        throw new Error(fullMessage);
+      }
+    }
+  };
+
   try {
     while (true) {
       const { done, value } = await reader.read();
-      if (done) {
-        console.warn("[Gradio v2] SSE stream closed without process_completed");
-        break;
-      }
+      if (done) break;
 
       buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
+      const rawLines = buffer.split("\n");
+      buffer = rawLines.pop() || "";
 
-      for (const line of lines) {
-        if (line.startsWith("data:")) {
-          const jsonStr = line.slice(5).replace(/^\s/, "").trim();
-          if (!jsonStr) continue;
-          try {
-            const msg = JSON.parse(jsonStr);
-            console.log("[Gradio v2] SSE msg:", msg.msg || "(no msg field)", JSON.stringify(msg).slice(0, 200));
+      for (const rawLine of rawLines) {
+        const line = rawLine.replace(/\r$/, "");
 
-            if (msg.msg === "process_completed") {
-              if (msg.success) {
-                return msg.output as T;
-              } else {
-                const output = msg.output || {};
-                const detail = output[" "] || output.error || msg.error || "";
-                const title =
-                  msg.title || output.title || "Gradio v2 task failed";
-                const fullMessage = detail
-                  ? `${title}: ${detail}`
-                  : title;
-                if (
-                  fullMessage.includes(
-                    "You have exceeded your free GPU quota",
-                  )
-                ) {
-                  throw new Error(QUOTA_ERROR_KEY);
-                }
-                throw new Error(fullMessage);
-              }
-            }
-
-            if (msg.msg === "close_stream") {
-              // Stream closed, will exit loop naturally
-            }
-          } catch (e) {
-            if (
-              e instanceof Error &&
-              (e.message === QUOTA_ERROR_KEY ||
-                e.message.includes(":") ||
-                e.message.includes("failed"))
-            ) {
-              throw e;
-            }
-            // Otherwise ignore parse errors or irrelevant messages
-          }
-        } else if (line.startsWith("event:")) {
-          console.log("[Gradio v2] SSE event:", line.slice(6).trim());
+        if (line === "") {
+          // Empty line → end of current SSE event
+          const result = flushEvent();
+          if (result !== undefined) return result;
+          continue;
         }
+
+        if (line.startsWith("event:")) {
+          currentEventName = line.slice(6).trim();
+        } else if (line.startsWith("data:")) {
+          const d = line.slice(5);
+          // spec: single leading space after colon is optional
+          currentDataLines.push(d.startsWith(" ") ? d.slice(1) : d);
+        }
+        // ignore comments (:...) and unknown lines
       }
     }
+    // Flush any final event without trailing blank line
+    const finalResult = flushEvent();
+    if (finalResult !== undefined) return finalResult;
   } finally {
     reader.releaseLock();
   }
