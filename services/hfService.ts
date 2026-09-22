@@ -100,6 +100,44 @@ const ensureSpaceAwake = async (
 
 // --- Gradio File Upload Helper ---
 
+// Downscale + recompress a blob to stay under Gradio HF Space upload limits.
+// Returns a JPEG Blob (or the original if already small enough).
+const MAX_UPLOAD_BYTES = 1.8 * 1024 * 1024; // 1.8 MB, Gradio Spaces typically allow 2-5 MB
+const MAX_UPLOAD_DIM = 2048;
+
+const compressImageForUpload = async (blob: Blob): Promise<Blob> => {
+  if (blob.size <= MAX_UPLOAD_BYTES) return blob;
+
+  const bitmap = await createImageBitmap(blob);
+  let w = bitmap.width;
+  let h = bitmap.height;
+  if (w > MAX_UPLOAD_DIM || h > MAX_UPLOAD_DIM) {
+    const r = Math.min(MAX_UPLOAD_DIM / w, MAX_UPLOAD_DIM / h);
+    w = Math.round(w * r);
+    h = Math.round(h * r);
+  }
+  const cvs = document.createElement("canvas");
+  cvs.width = w;
+  cvs.height = h;
+  const ctx = cvs.getContext("2d");
+  if (!ctx) return blob;
+  ctx.drawImage(bitmap, 0, 0, w, h);
+  bitmap.close();
+
+  // Progressive JPEG quality until we're under the limit
+  for (const q of [0.92, 0.85, 0.78, 0.7, 0.62]) {
+    const out: Blob | null = await new Promise((res) =>
+      cvs.toBlob((b) => res(b), "image/jpeg", q),
+    );
+    if (out && out.size <= MAX_UPLOAD_BYTES) return out;
+  }
+  // Last resort — return the smallest we got (quality 0.62) even if still over
+  const last: Blob | null = await new Promise((res) =>
+    cvs.toBlob((b) => res(b), "image/jpeg", 0.55),
+  );
+  return last || blob;
+};
+
 export const uploadToGradio = async (
   baseUrl: string,
   image: string | Blob,
@@ -907,6 +945,9 @@ export const editImageQwen21 = async (
       } else {
         blob = primaryItem;
       }
+
+      // Compress for Gradio HF Space upload limit (413 otherwise)
+      blob = await compressImageForUpload(blob);
 
       const path = await uploadToGradio(
         QWEN_IMAGE_21_BASE_API_URL,
