@@ -389,24 +389,29 @@ const runGradioV2Task = async <T>(
   try {
     while (true) {
       const { done, value } = await reader.read();
-      if (done) break;
+      if (done) {
+        console.warn("[Gradio v2] SSE stream closed without process_completed");
+        break;
+      }
 
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split("\n");
       buffer = lines.pop() || "";
 
       for (const line of lines) {
-        if (line.startsWith("data: ")) {
-          const jsonStr = line.slice(6).trim();
+        if (line.startsWith("data:")) {
+          const jsonStr = line.slice(5).replace(/^\s/, "").trim();
+          if (!jsonStr) continue;
           try {
             const msg = JSON.parse(jsonStr);
+            console.log("[Gradio v2] SSE msg:", msg.msg || "(no msg field)", JSON.stringify(msg).slice(0, 200));
 
             if (msg.msg === "process_completed") {
               if (msg.success) {
                 return msg.output as T;
               } else {
                 const output = msg.output || {};
-                const detail = output[" "] || output.error || "";
+                const detail = output[" "] || output.error || msg.error || "";
                 const title =
                   msg.title || output.title || "Gradio v2 task failed";
                 const fullMessage = detail
@@ -437,6 +442,8 @@ const runGradioV2Task = async <T>(
             }
             // Otherwise ignore parse errors or irrelevant messages
           }
+        } else if (line.startsWith("event:")) {
+          console.log("[Gradio v2] SSE event:", line.slice(6).trim());
         }
       }
     }
