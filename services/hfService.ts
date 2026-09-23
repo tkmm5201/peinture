@@ -17,7 +17,7 @@ const ZIMAGE_BASE_API_URL = "https://laruss5-z-image-turbo.hf.space";
 const ZIMAGE_MODEL_BASE_API_URL = "https://mrfakename-z-image.hf.space";
 const QWEN_IMAGE_BASE_API_URL = "https://mcp-tools-qwen-image-fast.hf.space";
 const QWEN_IMAGE_EDIT_BASE_API_URL =
-  "https://linoyts-qwen-image-edit-2511-fast.hf.space";
+  "https://sqcrates-qwen-image-edit-rapid-aio-nsfw-static.hf.space";
 const QWEN_IMAGE_21_BASE_API_URL =
   "https://assembledchaos-qwen-image-2-1-studio.hf.space";
 const QWEN_IMAGE_21_PROMPT_ENHANCER_URL =
@@ -800,7 +800,7 @@ export const editImageQwen = async (
         }
         const path = await uploadToGradio(
           QWEN_IMAGE_EDIT_BASE_API_URL,
-          blob,
+          await compressImageForUpload(blob),
           token,
           signal,
         );
