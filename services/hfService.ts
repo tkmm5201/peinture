@@ -17,7 +17,7 @@ const ZIMAGE_BASE_API_URL = "https://laruss5-z-image-turbo.hf.space";
 const ZIMAGE_MODEL_BASE_API_URL = "https://mrfakename-z-image.hf.space";
 const QWEN_IMAGE_BASE_API_URL = "https://mcp-tools-qwen-image-fast.hf.space";
 const QWEN_IMAGE_EDIT_BASE_API_URL =
-  "https://davidharryv-qwen-image-edit-rapid-aio-nsfw-v23.hf.space";
+  "https://ivan1617-qwen-image-edit-plus-nsfw-demo.hf.space";
 const QWEN_IMAGE_21_BASE_API_URL =
   "https://assembledchaos-qwen-image-2-1-studio.hf.space";
 const QWEN_IMAGE_21_PROMPT_ENHANCER_URL =
@@ -809,62 +809,59 @@ export const editImageQwen = async (
     try {
       const seed = Math.round(Math.random() * 2147483647);
 
-      // 1. Upload all Blobs to Gradio first to get temporary paths
-      const imagePayloadPromises = imageBlobs.map(async (item) => {
-        let blob: Blob;
-        if (typeof item === "string") {
-          if (item.startsWith("opfs://")) {
-            blob = await fetchCloudBlob(item);
-          } else {
-            blob = await fetchBlob(item);
-          }
-        } else {
-          blob = item;
-        }
-        const path = await uploadToGradio(
-          QWEN_IMAGE_EDIT_BASE_API_URL,
-          await compressImageForUpload(blob),
-          token,
-          signal,
-        );
-        // Need to include caption: null per spec, inside the nested structure
-        return {
-          image: { path, meta: { _type: "gradio.FileData" } },
-          caption: null,
-        };
-      });
-
-      const imagePayload = await Promise.all(imagePayloadPromises);
-
-      // 2. Call Inference
-      const output: any = await runGradioTask(
+      // 1. Upload the last (merged) image to Gradio to get a temp path
+      const lastItem = imageBlobs[imageBlobs.length - 1];
+      let blob: Blob;
+      if (typeof lastItem === "string") {
+        blob = lastItem.startsWith("opfs://")
+          ? await fetchCloudBlob(lastItem)
+          : await fetchBlob(lastItem);
+      } else {
+        blob = lastItem;
+      }
+      const imagePath = await uploadToGradio(
         QWEN_IMAGE_EDIT_BASE_API_URL,
-        [
-          imagePayload,
+        await compressImageForUpload(blob),
+        token,
+        signal,
+      );
+
+      // 2. Call Inference via named endpoint /generate
+      // Params: image(filepath), prompt, negative_prompt, steps, true_cfg_scale, seed
+      const output: any = await runGradioV2Task(
+        QWEN_IMAGE_EDIT_BASE_API_URL,
+        "generate",
+        {
+          image: imagePath,
           prompt,
-          seed,
-          false, // Randomize seed
-          guidanceScale,
+          negative_prompt: "",
           steps,
-          height,
-          width,
-          true, // Rewrite prompt
-        ],
-        0, // fn_index
-        12, // trigger_id
+          true_cfg_scale: guidanceScale,
+          seed,
+        },
         token,
         signal,
       );
 
       const data = output.data;
-      // Output format: [[{image:{url...}}]] (List of images)
-      if (!data || !data[0] || !data[0][0]?.image?.url) {
-        throw new Error("error_invalid_response");
+      // Output is an array; find the image URL
+      let imageUrl: string | undefined;
+      if (Array.isArray(data)) {
+        for (const item of data) {
+          if (item && typeof item === "object") {
+            const url = (item as any).url || (item as any).image?.url;
+            if (url) {
+              imageUrl = url;
+              break;
+            }
+          }
+        }
       }
+      if (!imageUrl) throw new Error("error_invalid_response");
 
       return {
         id: generateUUID(),
-        url: data[0][0].image.url,
+        url: normalizeSpaceUrl(QWEN_IMAGE_EDIT_BASE_API_URL, imageUrl),
         model: "qwen-image-edit",
         prompt,
         aspectRatio: "custom",
