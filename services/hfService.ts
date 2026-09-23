@@ -28,7 +28,7 @@ const FLUX_SCHNELL_BASE_API_URL =
 const UPSCALER_BASE_API_URL = "https://phips-upscaler.hf.space";
 //const UPSCALER_BASE_API_URL = "https://tuan2308-upscaler.hf.space";
 const POLLINATIONS_API_URL = "https://text.pollinations.ai/openai";
-const WAN2_VIDEO_API_URL = "https://kulkas2pintu-wan555.hf.space";
+const WAN2_VIDEO_API_URL = "https://observantdistressed-wan2-2-i2v-v3.hf.space";
 //const WAN2_VIDEO_API_URL = "https://fradeck619-wan2-2-fp8da-aoti-faster.hf.space";
 
 const Z_IMAGE_NEGATIVE_PROMPT =
@@ -1230,51 +1230,47 @@ export const createVideoTaskHF = async (
       if (typeof imageInput === "string") {
         if (imageInput.startsWith("opfs://")) {
           const blob = await fetchCloudBlob(imageInput);
-          filePath = await uploadToGradio(WAN2_VIDEO_API_URL, blob, token);
+          filePath = await uploadToGradio(WAN2_VIDEO_API_URL, await compressImageForUpload(blob), token);
         } else {
           // Assume it's a remote URL accessible by Gradio, or a path already returned by uploadToGradio
           filePath = imageInput;
         }
       } else {
-        filePath = await uploadToGradio(WAN2_VIDEO_API_URL, imageInput, token);
+        filePath = await uploadToGradio(WAN2_VIDEO_API_URL, await compressImageForUpload(imageInput), token);
       }
 
-      // Call Inference using Queue
-      // kulkas2pintu-wan555 fn_index 0 (generate_video) inputs, in component
-      // order: Input Image | Last Image | Prompt | Steps | Negative Prompt |
-      // Duration | Guidance (high noise) | Guidance 2 (low noise) | Seed |
-      // Randomize seed | Video Quality | Scheduler | Flow Shift | FPS |
-      // Display result | Safe Mode. trigger_id 23 = "Generate Video" button.
-      const output: any = await runGradioTask(
+      // Call Inference using the Gradio v2 named endpoint API
+      // (observantdistressed/wan2-2-i2v-v3 uses named parameters)
+      const output: any = await runGradioV2Task(
         WAN2_VIDEO_API_URL,
-        [
-          { path: filePath, meta: { _type: "gradio.FileData" } },
-          null, // Last Image (optional)
-          settings.prompt,
-          settings.steps,
-          VIDEO_NEGATIVE_PROMPT,
-          settings.duration,
-          settings.guidance, // Guidance Scale - high noise stage
-          settings.guidance, // Guidance Scale 2 - low noise stage
-          finalSeed,
-          false, // Randomize seed
-          6, // Video Quality (Space default)
-          "UniPCMultistep", // Scheduler (Space default)
-          3, // Flow Shift (Space default)
-          16, // Video Fluidity / FPS (Space default)
-          true, // Display result
-          true, // Safe Mode (Space default)
-        ],
-        0, // fn_index
-        23, // trigger_id
+        "generate_video",
+        {
+          input_image: { path: filePath, meta: { _type: "gradio.FileData" } },
+          last_image: null,
+          prompt: settings.prompt,
+          steps: settings.steps,
+          negative_prompt: VIDEO_NEGATIVE_PROMPT,
+          duration_seconds: settings.duration,
+          guidance_scale: settings.guidance,
+          guidance_scale_2: settings.guidance,
+          seed: finalSeed,
+          randomize_seed: false,
+          quality: 6,
+          scheduler: "UniPCMultistep",
+          flow_shift: 3,
+          frame_multiplier: "16",
+          safe_mode: true,
+          lora_groups: [],
+          auto_lora_enabled: true,
+          video_component: true,
+        },
         token,
       );
 
       const data = output.data;
-      // Outputs: data[0] = video component ({video: {url}} or FileData),
-      // data[1] = download file, data[2] = seed used
+      // Outputs: data[0] = video component FileData, data[1] = download FileData, data[2] = seed
       const rawUrl =
-        data?.[0]?.video?.url || data?.[0]?.url || data?.[1]?.url;
+        data?.[0]?.url || data?.[0]?.video?.url || data?.[1]?.url;
       const url = normalizeSpaceUrl(WAN2_VIDEO_API_URL, rawUrl);
       if (url) return url;
 
