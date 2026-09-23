@@ -300,7 +300,9 @@ const runGradioTask = async <T>(
 
                 // Check if this is a quota error to trigger token rotation
                 if (
-                  fullMessage.includes("You have exceeded your free GPU quota")
+                  fullMessage.includes("You have exceeded your free") &&
+                  (fullMessage.includes("GPU quota") ||
+                    fullMessage.includes("ZeroGPU"))
                 ) {
                   throw new Error(QUOTA_ERROR_KEY);
                 }
@@ -378,24 +380,40 @@ const runGradioV2Task = async <T>(
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 
-  // 1. Initiate the call
-  const joinRes = await fetch(
-    `${baseUrl}/gradio_api/call/v2/${endpoint}`,
-    {
-      method: "POST",
-      headers,
-      body: JSON.stringify(params),
-      signal,
-    },
-  );
+  // 1. Initiate the call — try v2 named-params protocol first,
+  //    fall back to positional {data: [...]} on /gradio_api/call/{endpoint}
+  //    (some Gradio 6.x Spaces only expose the positional route).
+  let joinData: any;
+  {
+    let joinRes = await fetch(
+      `${baseUrl}/gradio_api/call/v2/${endpoint}`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify(params),
+        signal,
+      },
+    );
 
-  if (!joinRes.ok) {
-    if (joinRes.status === 429) throw new Error(QUOTA_ERROR_KEY);
-    const errText = await joinRes.text().catch(() => "");
-    throw new Error(`Gradio v2 Join Error: ${joinRes.status} ${errText}`);
+    if (joinRes.status === 405) {
+      // Fallback: positional data array on the non-v2 call route
+      joinRes = await fetch(`${baseUrl}/gradio_api/call/${endpoint}`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ data: Object.values(params) }),
+        signal,
+      });
+    }
+
+    if (!joinRes.ok) {
+      if (joinRes.status === 429) throw new Error(QUOTA_ERROR_KEY);
+      const errText = await joinRes.text().catch(() => "");
+      throw new Error(`Gradio v2 Join Error: ${joinRes.status} ${errText}`);
+    }
+
+    joinData = await joinRes.json();
   }
 
-  const joinData = await joinRes.json();
   const eventId = joinData.event_id;
   if (!eventId) {
     throw new Error("Gradio v2: no event_id in join response");

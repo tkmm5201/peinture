@@ -110,13 +110,28 @@ export async function runWithTokenRetry<T>(
 
   let lastError: any;
   let attempts = 0;
-  const maxAttempts = tokens.length + 1;
+  // +1 for the null-token fallback on optional providers (HF public quota)
+  const maxAttempts = tokens.length + (isOptional ? 1 : 0);
 
   while (attempts < maxAttempts) {
     attempts++;
     const token = getNextAvailableToken(providerId);
 
+    // For optional providers, fall back to null token (public quota) once
+    // all configured tokens are exhausted.
     if (!token) {
+      if (isOptional && attempts === tokens.length + 1) {
+        try {
+          return await operation(null);
+        } catch (error: any) {
+          lastError = error;
+          if (error.name === "AbortError") throw error;
+          if (isQuotaError(error, providerId)) {
+            throw new Error(errorKeys.exhausted);
+          }
+          throw error;
+        }
+      }
       throw new Error(errorKeys.exhausted);
     }
 
