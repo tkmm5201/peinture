@@ -476,8 +476,14 @@ const runGradioV2Task = async <T>(
     if (name === "error") {
       if (parsed && typeof parsed === "object") {
         const p = parsed as Record<string, any>;
-        const detail = p.detail || p.message || JSON.stringify(parsed).slice(0, 200);
-        throw new Error(`Gradio v2 error: ${detail}`);
+        const title = p.title || "";
+        const msg = p.error || p.detail || p.message || "";
+        const full = [title, msg].filter(Boolean).join(": ");
+        // ZeroGPU worker errors are quota-related → trigger token rotation
+        if (full.includes("ZeroGPU") || full.includes("GPU task aborted")) {
+          throw new Error(QUOTA_ERROR_KEY);
+        }
+        throw new Error(`Gradio v2 error: ${full || JSON.stringify(parsed).slice(0, 200)}`);
       }
       throw new Error("Gradio v2 error: server returned an error (no details)");
     }
