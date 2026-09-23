@@ -479,13 +479,18 @@ const runGradioV2Task = async <T>(
         const title = p.title || "";
         const msg = p.error || p.detail || p.message || "";
         const full = [title, msg].filter(Boolean).join(": ");
-        // ZeroGPU worker errors are quota-related → trigger token rotation
-        if (full.includes("ZeroGPU") || full.includes("GPU task aborted")) {
+        // ZeroGPU worker errors / null error → quota/worker failure → rotate token
+        if (
+          full.includes("ZeroGPU") ||
+          full.includes("GPU task aborted") ||
+          !msg // {"error": null} → worker aborted silently
+        ) {
           throw new Error(QUOTA_ERROR_KEY);
         }
-        throw new Error(`Gradio v2 error: ${full || JSON.stringify(parsed).slice(0, 200)}`);
+        throw new Error(`Gradio v2 error: ${full}`);
       }
-      throw new Error("Gradio v2 error: server returned an error (no details)");
+      // error event with null/non-object payload → worker aborted
+      throw new Error(QUOTA_ERROR_KEY);
     }
 
     // --- Older Gradio 5.x v2 protocol: {msg, success, output} ---
@@ -542,6 +547,20 @@ const runGradioV2Task = async <T>(
     }
     const finalResult = flushEvent();
     if (finalResult !== undefined) return finalResult.result;
+  } catch (streamError: any) {
+    // Network errors during SSE (e.g. ZeroGPU worker closing the connection
+    // abruptly) are effectively worker failures → rotate token.
+    if (
+      streamError instanceof TypeError ||
+      (streamError?.message &&
+        (streamError.message.includes("network") ||
+          streamError.message.includes("fetch") ||
+          streamError.message.includes("abort") ||
+          streamError.message.includes("terminated")))
+    ) {
+      throw new Error(QUOTA_ERROR_KEY);
+    }
+    throw streamError;
   } finally {
     reader.releaseLock();
   }
