@@ -832,7 +832,7 @@ export const editImageQwen = async (
         QWEN_IMAGE_EDIT_BASE_API_URL,
         "generate",
         {
-          image: imagePath,
+          image: { path: imagePath, meta: { _type: "gradio.FileData" } },
           prompt,
           negative_prompt: "",
           steps,

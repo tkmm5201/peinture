@@ -275,8 +275,8 @@ export const useEditorGeneration = (
             finalPrompt,
             width,
             height,
+            30,
             4,
-            1,
             controller.signal,
           );
         }
@@ -347,8 +347,8 @@ export const useEditorGeneration = (
             finalPrompt,
             width,
             height,
+            30,
             4,
-            1,
             controller.signal,
           );
         }
