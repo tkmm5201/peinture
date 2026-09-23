@@ -1285,7 +1285,7 @@ export const createVideoTaskHF = async (
           quality: 6,
           scheduler: "UniPCMultistep",
           flow_shift: 3,
-          frame_multiplier: "16",
+          frame_multiplier: 16,
           safe_mode: true,
           lora_groups: [],
           auto_lora_enabled: true,
