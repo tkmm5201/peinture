@@ -473,10 +473,13 @@ const runGradioV2Task = async <T>(
       return { result: { data: parsed } as T };
     }
 
-    if (name === "error" && parsed && typeof parsed === "object") {
-      const p = parsed as Record<string, any>;
-      const detail = p.detail || p.message || JSON.stringify(parsed).slice(0, 200);
-      throw new Error(`Gradio v2 error: ${detail}`);
+    if (name === "error") {
+      if (parsed && typeof parsed === "object") {
+        const p = parsed as Record<string, any>;
+        const detail = p.detail || p.message || JSON.stringify(parsed).slice(0, 200);
+        throw new Error(`Gradio v2 error: ${detail}`);
+      }
+      throw new Error("Gradio v2 error: server returned an error (no details)");
     }
 
     // --- Older Gradio 5.x v2 protocol: {msg, success, output} ---
@@ -1248,15 +1251,19 @@ export const createVideoTaskHF = async (
       let filePath = "";
 
       if (typeof imageInput === "string") {
-        if (imageInput.startsWith("opfs://")) {
-          const blob = await fetchCloudBlob(imageInput);
-          filePath = await uploadToGradio(WAN2_VIDEO_API_URL, await compressImageForUpload(blob), token);
-        } else {
-          // Assume it's a remote URL accessible by Gradio, or a path already returned by uploadToGradio
-          filePath = imageInput;
-        }
+        // Always upload — the Space may not be able to fetch remote URLs.
+        const blob = await fetchCloudBlob(imageInput);
+        filePath = await uploadToGradio(
+          WAN2_VIDEO_API_URL,
+          await compressImageForUpload(blob),
+          token,
+        );
       } else {
-        filePath = await uploadToGradio(WAN2_VIDEO_API_URL, await compressImageForUpload(imageInput), token);
+        filePath = await uploadToGradio(
+          WAN2_VIDEO_API_URL,
+          await compressImageForUpload(imageInput),
+          token,
+        );
       }
 
       // Call Inference using the Gradio v2 named endpoint API
