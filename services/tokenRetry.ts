@@ -136,6 +136,9 @@ export async function runWithTokenRetry<T>(
     }
 
     try {
+      console.warn(
+        `[${providerId}] Trying token ${attempts}/${tokens.length}${isOptional ? " (+null fallback)" : ""}`,
+      );
       return await operation(token);
     } catch (error: any) {
       lastError = error;
@@ -147,7 +150,7 @@ export async function runWithTokenRetry<T>(
 
       if (isQuotaError(error, providerId) && token) {
         console.warn(
-          `[${providerId}] Token ${token.substring(0, 4)}**** exhausted. Switching to next token.`,
+          `[${providerId}] Token ${token.substring(0, 6)}**** exhausted (attempt ${attempts}/${tokens.length}). Switching to next token.`,
         );
         markTokenExhausted(providerId, token);
         continue;
