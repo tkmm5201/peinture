@@ -456,6 +456,8 @@ const runGradioV2Task = async <T>(
 
     if (!name && !raw) return undefined;
 
+    console.warn("[Gradio v2] SSE event:", name || "(no event)", raw.slice(0, 300));
+
     let parsed: unknown = undefined;
     if (raw) {
       try { parsed = JSON.parse(raw); } catch { /* non-JSON payload → ignore */ }
