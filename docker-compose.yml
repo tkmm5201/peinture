@@ -5,5 +5,8 @@ services:
     build: .
     container_name: peinture
     ports:
-      - "80:80"
+      - "8088:80"
+    extra_hosts:
+      # 允许容器内通过 host.docker.internal 访问宿主机上的 fnOS WebDAV (5005)
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped

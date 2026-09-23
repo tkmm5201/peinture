@@ -206,8 +206,13 @@ export function createEncryptedStorage(sensitiveKeys: string[]) {
         if (isEncrypted(raw)) {
           state = await decryptJSON<Record<string, unknown>>(raw);
         } else {
-          // Plaintext — parse and migrate
-          state = JSON.parse(raw);
+          // Plaintext — could be:
+          //   (a) inner-state format:  {"storageType":"webdav",...}
+          //   (b) Zustand-wrapped:     {"state":{"storageType":"webdav",...},"version":0}
+          // (b) happens when setItem's crypto fallback writes the raw Zustand value.
+          // Unwrap (b) so the downstream JSON.stringify({ state }) produces the correct shape.
+          const parsed = JSON.parse(raw);
+          state = parsed.state || parsed;
         }
 
         return JSON.stringify({ state });
@@ -219,6 +224,24 @@ export function createEncryptedStorage(sensitiveKeys: string[]) {
     },
 
     setItem: async (name: string, value: string): Promise<void> => {
+      // On non-secure HTTP origins (e.g. http://192.168.x.x:8088), crypto.subtle
+      // is undefined — the Web Crypto API requires a secure context (HTTPS or
+      // http://localhost). Skip encryption entirely and store plaintext so the
+      // config survives a page refresh.
+      if (typeof crypto === "undefined" || !crypto.subtle) {
+        try {
+          const parsed =
+            typeof value === "string" ? JSON.parse(value) : value;
+          const state = parsed.state || parsed;
+          localStorage.setItem(name, JSON.stringify(state));
+        } catch {
+          const fallback =
+            typeof value === "string" ? value : JSON.stringify(value);
+          localStorage.setItem(name, fallback);
+        }
+        return;
+      }
+
       try {
         // Zustand may pass a pre-serialized JSON string or a raw object
         // (depending on version/cast). Handle both defensively.
@@ -246,9 +269,18 @@ export function createEncryptedStorage(sensitiveKeys: string[]) {
         }
       } catch (e) {
         console.warn(`Failed to write encrypted storage "${name}"`, e);
-        // Fallback: try to serialize whatever we got
-        const fallback = typeof value === "string" ? value : JSON.stringify(value);
-        localStorage.setItem(name, fallback);
+        // Fallback: store the inner state as plaintext (same format as the
+        // non-sensitive path above, so getItem can re-wrap it consistently).
+        try {
+          const parsed =
+            typeof value === "string" ? JSON.parse(value) : value;
+          const state = parsed.state || parsed;
+          localStorage.setItem(name, JSON.stringify(state));
+        } catch {
+          const fallback =
+            typeof value === "string" ? value : JSON.stringify(value);
+          localStorage.setItem(name, fallback);
+        }
       }
     },
 

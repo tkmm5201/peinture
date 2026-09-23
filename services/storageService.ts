@@ -980,7 +980,14 @@ const listWebDAVFiles = async (config: WebDAVConfig): Promise<CloudFile[]> => {
       else if (lowerName.match(/\.(mp4|webm|mov)$/)) type = "video";
 
       if (type !== "unknown") {
-        const fileUrl = new URL(href, config.url).toString();
+        let fileUrl = new URL(href, config.url).toString();
+
+        // 反向代理场景（如 nginx /dav → fnOS WebDAV）下，服务端返回的 href
+        // 可能是主机绝对路径而缺少代理前缀，此时统一重建为配置地址下的 URL
+        const dirBaseUrl = joinPath(config.url, dir);
+        if (!fileUrl.startsWith(dirBaseUrl + "/")) {
+          fileUrl = joinPath(config.url, dir, fileName);
+        }
 
         files.push({
           key: fileUrl,
@@ -1024,7 +1031,9 @@ export const testWebDAVConnection = async (
   }
 
   try {
-    const rootResponse = await fetch(config.url, {
+    // 规范化 URL：确保以 / 结尾，避免后端 location /dav/ 不匹配 /dav 而落到 SPA fallback
+    const rootUrl = config.url.endsWith("/") ? config.url : config.url + "/";
+    const rootResponse = await fetch(rootUrl, {
       method: "PROPFIND",
       headers: {
         ...getWebDAVHeaders(config),

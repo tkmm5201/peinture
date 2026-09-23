@@ -1,8 +1,14 @@
 # Stage 1: Build the React application
 FROM node:20-alpine AS builder
 
-# Enable pnpm
-RUN corepack enable pnpm
+# Pin pnpm to the same major version used for development (avoids corepack pulling latest)
+ARG PNPM_VERSION=10.33.0
+# npm registry mirror (override with --build-arg NPM_REGISTRY=... for overseas builds)
+ARG NPM_REGISTRY=https://registry.npmmirror.com
+# corepack downloads the pnpm binary from this registry on first run
+ENV COREPACK_NPM_REGISTRY=${NPM_REGISTRY}
+RUN corepack enable pnpm && corepack prepare pnpm@${PNPM_VERSION} --activate
+RUN pnpm config set registry ${NPM_REGISTRY}
 
 WORKDIR /app
 
